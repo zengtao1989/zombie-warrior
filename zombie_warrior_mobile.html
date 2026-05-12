@@ -214,7 +214,7 @@ const G={state:'menu',wave:1,maxWave:50,score:0,coins:0,killed:0,
   xp:0,level:1,xpNeeded:100,
   keys:{},mouse:{x:W/2,y:H/2,down:false},
   cam:{x:0,y:0},shake:{x:0,y:0,t:0,intensity:0},
-  time:0,ambientLights:[],lootNotifyTmr:0,storyQueue:[],bossUp:false,unlockShards:{1:0,2:0,3:0,4:0}};
+  time:0,ambientLights:[],lootNotifyTmr:0,storyQueue:[],bossUp:false,bossDefeated:false,unlockShards:{1:0,2:0,3:0,4:0}};
 
 const WW=3600,WH=3600;
 
@@ -797,7 +797,7 @@ function update(now,dt){
     }
     if(B.hitFlash>0)B.hitFlash--;
     if(B.hp<=0){
-      B.alive=false;G.bossUp=false;
+      B.alive=false;G.bossUp=false;G.bossDefeated=true;
       document.getElementById('bb').style.display='none';
       spawnExplosion(B.x,B.y,220);spawnBlood(B.x,B.y,50,8);
       const isFinal=G.wave>=50;
@@ -849,7 +849,8 @@ function update(now,dt){
       else if(G.wave===40)showStory(40);
       else if(G.wave===50)showStory(49);
     }
-    else if(!isBossWave||!G.bossUp){
+    else if(!isBossWave||G.bossDefeated){
+      G.bossDefeated=false;
       if(STORIES[G.wave]){
         showStory(G.wave);
       }
