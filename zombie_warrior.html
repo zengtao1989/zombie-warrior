@@ -37,7 +37,7 @@ canvas{display:block}
 #overlay button{background:linear-gradient(135deg,#c00,#600);color:#fff;border:2px solid #f44;padding:14px 52px;font-size:20px;border-radius:8px;cursor:pointer;font-family:inherit;box-shadow:0 4px 30px #f006,0 0 60px #f003;transition:all .2s;letter-spacing:2px}
 #overlay button:hover{background:linear-gradient(135deg,#f00,#c00);transform:scale(1.06);box-shadow:0 4px 40px #f008,0 0 80px #f005}
 #sp{position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;overflow-y:auto}
-#sp .princess-avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#f9a,#f06);display:flex;align-items:center;justify-content:center;font-size:48px;margin:0 auto 12px;box-shadow:0 0 20px #f9a6,0 0 40px #f064;animation:princessGlow 2s ease-in-out infinite;position:relative;overflow:hidden}
+#sp .princess-avatar{width:80px;height:80px;border-radius:50%;display:block;margin:0 auto 12px;box-shadow:0 0 20px #f9a6,0 0 40px #f064;animation:princessGlow 2s ease-in-out infinite;position:relative;overflow:hidden}
 #sp .princess-avatar::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.25),transparent 60%);pointer-events:none}
 #sp .avatar-dark{box-shadow:0 0 20px #a4f6,0 0 40px #6008}
 #sp .avatar-boss{width:100px;height:100px;font-size:56px;box-shadow:0 0 30px #f006,0 0 60px #a0f4;animation:bossGlow 1.5s ease-in-out infinite}
@@ -104,7 +104,7 @@ canvas{display:block}
 </div>
 <div id="sp" style="display:none">
  <div class="sb">
-  <div class="princess-avatar" id="princess-avatar">🌹</div>
+  <canvas class="princess-avatar" id="princess-avatar" width="80" height="80"></canvas>
   <div class="pt" id="s-pt">⚔️</div>
   <h2 id="s-tl">??</h2>
   <div id="s-tx">...</div>
@@ -122,6 +122,126 @@ canvas{display:block}
 const W=window.innerWidth,H=window.innerHeight;
 const cv=document.getElementById('c'),cx=cv.getContext('2d');
 cv.width=W;cv.height=H;
+
+// ===== 绘制卡通女主角 =====
+function drawPrincessAvatar(canvasEl,type){
+  const c=canvasEl.getContext('2d'),s=canvasEl.width;
+  c.clearRect(0,0,s,s);
+  const cx2=s/2,cy2=s/2+2;
+  // 背景圆
+  let bg1,bg2;
+  if(type==='warrior'){bg1='#a4f';bg2='#88f';}
+  else if(type==='win'){bg1='#f9a';bg2='#f0f';}
+  else if(type==='boss'){bg1='#600';bg2='#300';}
+  else if(type==='skull'){bg1='#400';bg2='#200';}
+  else if(type==='dark'){bg1='#600';bg2='#400';}
+  else if(type==='zombie'){bg1='#484';bg2='#282';}
+  else if(type==='crown'){bg1='#a4f';bg2='#408';}
+  else if(type==='broken'){bg1='#a00';bg2='#500';}
+  else if(type==='fire'){bg1='#f80';bg2='#a40';}
+  else if(type==='night'){bg1='#222';bg2='#000';}
+  else{bg1='#f9a';bg2='#f06';}
+  const bg=c.createRadialGradient(cx2-4,cy2-4,0,cx2,cy2,s/2);
+  bg.addColorStop(0,bg1);bg.addColorStop(1,bg2);
+  c.fillStyle=bg;c.beginPath();c.arc(cx2,cy2,s/2,0,Math.PI*2);c.fill();
+  // 面部
+  const fy=cy2-2,fr=s*.32;
+  const fg=c.createRadialGradient(cx2-3,fy-2,0,cx2,fy,fr);
+  if(type==='zombie'){fg.addColorStop(0,'#8b8');fg.addColorStop(0.7,'#5a5');fg.addColorStop(1,'#383');}
+  else if(type==='boss'){fg.addColorStop(0,'#d8a0b0');fg.addColorStop(0.7,'#b07088');fg.addColorStop(1,'#804060');}
+  else{fg.addColorStop(0,'#ffe4d4');fg.addColorStop(0.7,'#f5c9b0');fg.addColorStop(1,'#e0a888');}
+  c.fillStyle=fg;c.beginPath();c.arc(cx2,fy,fr,0,Math.PI*2);c.fill();
+  // 头发
+  const hairColor=type==='boss'?'#2a0a1a':type==='zombie'?'#2a4a2a':type==='dark'||type==='night'?'#1a1a2a':'#8a3050';
+  c.fillStyle=hairColor;
+  c.beginPath();c.arc(cx2,fy-3,fr+2,Math.PI+0.2,Math.PI*2-0.2);c.fill();
+  // 刘海
+  if(type!=='zombie'){
+    c.beginPath();c.moveTo(cx2-fr+3,fy-2);c.quadraticCurveTo(cx2-fr*.4,fy+3,cx2-2,fy+5);c.lineTo(cx2-fr*.5,fy-6);c.closePath();c.fill();
+    c.beginPath();c.moveTo(cx2+fr-3,fy-2);c.quadraticCurveTo(cx2+fr*.4,fy+3,cx2+2,fy+5);c.lineTo(cx2+fr*.5,fy-6);c.closePath();c.fill();
+  }
+  // 长发（两侧垂下）
+  c.fillStyle=hairColor;
+  c.beginPath();c.moveTo(cx2-fr+4,fy+4);c.quadraticCurveTo(cx2-fr-4,fy+fr+4,cx2-fr+2,cy2+s*.3);c.quadraticCurveTo(cx2-fr+8,fy+fr+2,cx2-fr+10,fy+6);c.closePath();c.fill();
+  c.beginPath();c.moveTo(cx2+fr-4,fy+4);c.quadraticCurveTo(cx2+fr+4,fy+fr+4,cx2+fr-2,cy2+s*.3);c.quadraticCurveTo(cx2+fr-8,fy+fr+2,cx2+fr-10,fy+6);c.closePath();c.fill();
+  // 玫瑰花发饰
+  if(type!=='zombie'&&type!=='skull'&&type!=='night'){
+    c.fillStyle='#e8305a';c.beginPath();c.arc(cx2-fr*.7,fy-fr*.5,5,0,Math.PI*2);c.fill();
+    c.fillStyle='#f06080';c.beginPath();c.arc(cx2-fr*.7-2,fy-fr*.5-2,3,0,Math.PI*2);c.fill();
+    c.fillStyle='#c02040';c.beginPath();c.arc(cx2-fr*.7+1,fy-fr*.5+2,3,0,Math.PI*2);c.fill();
+    // 叶子
+    c.fillStyle='#2a8a3a';c.beginPath();c.ellipse(cx2-fr*.7+5,fy-fr*.5+2,4,2,.5,0,Math.PI*2);c.fill();
+  }
+  // 眼睛
+  if(type==='boss'||type==='dark'||type==='night'){
+    // 红色/紫色眼睛
+    c.fillStyle=type==='boss'?'rgba(255,0,60,0.9)':'rgba(160,100,255,0.9)';
+    c.shadowColor=type==='boss'?'#f00':'#a4f';c.shadowBlur=8;
+    c.beginPath();c.ellipse(cx2-6,fy,4.5,5.5,0,0,Math.PI*2);c.fill();
+    c.beginPath();c.ellipse(cx2+6,fy,4.5,5.5,0,0,Math.PI*2);c.fill();
+    c.shadowBlur=0;
+    c.fillStyle='#fff';c.beginPath();c.arc(cx2-5,fy-1,1.5,0,Math.PI*2);c.fill();
+    c.beginPath();c.arc(cx2+7,fy-1,1.5,0,Math.PI*2);c.fill();
+  }else if(type==='zombie'){
+    c.fillStyle='#ff0';c.shadowColor='#ff0';c.shadowBlur=5;
+    c.beginPath();c.ellipse(cx2-6,fy,4,5,0,0,Math.PI*2);c.fill();
+    c.beginPath();c.ellipse(cx2+6,fy,4,5,0,0,Math.PI*2);c.fill();
+    c.shadowBlur=0;
+    c.fillStyle='#220';c.beginPath();c.arc(cx2-6,fy,2,0,Math.PI*2);c.fill();
+    c.beginPath();c.arc(cx2+6,fy,2,0,Math.PI*2);c.fill();
+  }else{
+    // 可爱大眼
+    c.fillStyle='#fff';c.beginPath();c.ellipse(cx2-6,fy,5,5.5,0,0,Math.PI*2);c.fill();
+    c.beginPath();c.ellipse(cx2+6,fy,5,5.5,0,0,Math.PI*2);c.fill();
+    c.fillStyle='#8a3060';c.beginPath();c.arc(cx2-5.5,fy+.5,3.2,0,Math.PI*2);c.fill();
+    c.beginPath();c.arc(cx2+5.5,fy+.5,3.2,0,Math.PI*2);c.fill();
+    c.fillStyle='#fff';c.beginPath();c.arc(cx2-4.5,fy-1,1.3,0,Math.PI*2);c.fill();
+    c.beginPath();c.arc(cx2+6.5,fy-1,1.3,0,Math.PI*2);c.fill();
+  }
+  // 腮红
+  if(type!=='zombie'&&type!=='boss'&&type!=='dark'&&type!=='night'){
+    c.fillStyle='rgba(255,120,140,0.4)';
+    c.beginPath();c.ellipse(cx2-10,fy+5,3.5,2.5,0,0,Math.PI*2);c.fill();
+    c.beginPath();c.ellipse(cx2+10,fy+5,3.5,2.5,0,0,Math.PI*2);c.fill();
+  }
+  // 嘴
+  if(type==='boss'||type==='dark'){
+    c.strokeStyle='#c03050';c.lineWidth=1.5;c.beginPath();c.arc(cx2,fy+8,3,0.1,Math.PI-0.1);c.stroke();
+  }else if(type==='zombie'){
+    c.fillStyle='#400';c.beginPath();c.ellipse(cx2,fy+8,4,3,0,0,Math.PI*2);c.fill();
+  }else{
+    c.strokeStyle='#d06060';c.lineWidth=1.2;c.beginPath();c.arc(cx2,fy+7,2.5,0.1,Math.PI-0.1);c.stroke();
+  }
+  // Boss皇冠
+  if(type==='boss'||type==='crown'){
+    c.fillStyle='#fc0';c.beginPath();
+    const crX=cx2,crY=fy-fr-4;
+    c.moveTo(crX-10,crY+6);c.lineTo(crX-8,crY-2);c.lineTo(crX-4,crY+3);
+    c.lineTo(crX,crY-4);c.lineTo(crX+4,crY+3);c.lineTo(crX+8,crY-2);c.lineTo(crX+10,crY+6);
+    c.closePath();c.fill();
+    c.fillStyle='#f44';c.beginPath();c.arc(crX,crY-1,2,0,Math.PI*2);c.fill();
+  }
+  // 战士标记
+  if(type==='warrior'){
+    c.fillStyle='#4af';c.beginPath();c.arc(cx2,cy2+8,8,0,Math.PI*2);c.fill();
+    c.fillStyle='#fff';c.font='bold 10px sans-serif';c.textAlign='center';c.fillText('⚔',cx2,cy2+12);
+  }
+  // 骷髅标记
+  if(type==='skull'){
+    c.fillStyle='#ddd';c.beginPath();c.arc(cx2,cy2+10,7,0,Math.PI*2);c.fill();
+    c.fillStyle='#222';c.beginPath();c.arc(cx2-2,cy2+9,2,0,Math.PI*2);c.fill();
+    c.beginPath();c.arc(cx2+2,cy2+9,2,0,Math.PI*2);c.fill();
+    c.beginPath();c.moveTo(cx2-2,cy2+13);c.lineTo(cx2+2,cy2+13);c.lineWidth=1.5;c.strokeStyle='#222';c.stroke();
+  }
+  // 心碎标记
+  if(type==='broken'){
+    c.fillStyle='#f44';c.font='14px serif';c.textAlign='center';c.fillText('💔',cx2,cy2+14);
+  }
+  // 火焰标记
+  if(type==='fire'){
+    c.fillStyle='#f80';c.font='14px serif';c.textAlign='center';c.fillText('🔥',cx2,cy2+14);
+  }
+}
 
 // ===== AUDIO =====
 const AC=new(window.AudioContext||window.webkitAudioContext)();
@@ -510,39 +630,21 @@ function showStory(k){
   // Set princess avatar based on story type
   const avatar=document.getElementById('princess-avatar');
   avatar.className='princess-avatar';
-  if(k===0){
-    avatar.textContent='⚔️';avatar.style.background='linear-gradient(135deg,#a4f,#88f)';
-  }else if(k===50){
-    avatar.textContent='💖';avatar.style.background='linear-gradient(135deg,#f9a,#f0f)';
-    avatar.classList.add('avatar-win');
-  }else if(k===49){
-    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#600,#300)';
-    avatar.classList.add('avatar-boss');
-  }else if(k===10||k===20||k===30||k===40){
-    avatar.textContent='💀';avatar.style.background='linear-gradient(135deg,#400,#200)';
-  }else if(s.p==='🌹'){
-    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#f9a,#f06)';
-  }else if(s.p==='🖤'){
-    avatar.textContent='🖤';avatar.style.background='linear-gradient(135deg,#600,#400)';
-    avatar.classList.add('avatar-dark');
-  }else if(s.p==='🧟'){
-    avatar.textContent='🧟';avatar.style.background='linear-gradient(135deg,#484,#282)';
-  }else if(s.p==='👑'){
-    avatar.textContent='👑';avatar.style.background='linear-gradient(135deg,#a4f,#408)';
-    avatar.classList.add('avatar-dark');
-  }else if(s.p==='💔'){
-    avatar.textContent='💔';avatar.style.background='linear-gradient(135deg,#a00,#500)';
-  }else if(s.p==='⚡'){
-    avatar.textContent='⚡';avatar.style.background='linear-gradient(135deg,#600,#400)';
-    avatar.classList.add('avatar-dark');
-  }else if(s.p==='🔥'){
-    avatar.textContent='🔥';avatar.style.background='linear-gradient(135deg,#f80,#a40)';
-  }else if(s.p==='🌑'){
-    avatar.textContent='🌑';avatar.style.background='linear-gradient(135deg,#222,#000)';
-    avatar.classList.add('avatar-dark');
-  }else{
-    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#f9a,#f06)';
-  }
+  let avatarType='rose';
+  if(k===0){avatarType='warrior';}
+  else if(k===50){avatarType='win';avatar.classList.add('avatar-win');}
+  else if(k===49){avatarType='boss';avatar.classList.add('avatar-boss');}
+  else if(k===10||k===20||k===30||k===40){avatarType='skull';}
+  else if(s.p==='🌹'){avatarType='rose';}
+  else if(s.p==='🖤'){avatarType='dark';avatar.classList.add('avatar-dark');}
+  else if(s.p==='🧟'){avatarType='zombie';}
+  else if(s.p==='👑'){avatarType='crown';avatar.classList.add('avatar-dark');}
+  else if(s.p==='💔'){avatarType='broken';}
+  else if(s.p==='⚡'){avatarType='dark';avatar.classList.add('avatar-dark');}
+  else if(s.p==='🔥'){avatarType='fire';}
+  else if(s.p==='🌑'){avatarType='night';avatar.classList.add('avatar-dark');}
+  else{avatarType='rose';}
+  drawPrincessAvatar(avatar,avatarType);
 
   document.getElementById('sp').style.display='flex';
   const isWin=k===50;
@@ -967,27 +1069,81 @@ function render(now){
     if(B.phase===2){for(let i=0;i<3;i++){const fa=now*.005+i*2.1,fr=B.r+8;particles.push({x:B.x+Math.cos(fa)*fr,y:B.y+Math.sin(fa)*fr,vx:Math.cos(fa)*-.5,vy:-1-Math.random(),life:.6,dec:.05,sz:3+Math.random()*4,col:B.type==='rose'?'rgba(200,50,80,0.7)':`hsl(${15+Math.floor(Math.random()*20)},100%,55%)`,gravity:-.03,ground:false});}}
   }
 
-  // PLAYER
+  // PLAYER - 可爱卡通战士
   const px=P.x,py=P.y;
-  cx.fillStyle='rgba(0,0,0,0.35)';cx.beginPath();cx.ellipse(px,py+P.r+2,P.r*.9,5,0,0,Math.PI*2);cx.fill();
+  // 影子
+  cx.fillStyle='rgba(0,0,0,0.25)';cx.beginPath();cx.ellipse(px,py+P.r+6,P.r*.8,4,0,0,Math.PI*2);cx.fill();
+  // 护盾特效
   if(P.shield){cx.strokeStyle='rgba(80,160,255,0.7)';cx.lineWidth=4;cx.shadowColor='#4af';cx.shadowBlur=25;cx.beginPath();cx.arc(px,py,P.r+10,0,Math.PI*2);cx.stroke();const sg=cx.createRadialGradient(px,py,P.r,px,py,P.r+14);sg.addColorStop(0,'rgba(80,160,255,0)');sg.addColorStop(1,'rgba(80,160,255,0.15)');cx.fillStyle=sg;cx.beginPath();cx.arc(px,py,P.r+14,0,Math.PI*2);cx.fill();cx.shadowBlur=0;}
   if(P.spdBoost){cx.strokeStyle='rgba(255,220,0,0.5)';cx.lineWidth=3;cx.setLineDash([4,4]);cx.lineDashOffset=-now*.05;cx.beginPath();cx.arc(px,py,P.r+14,0,Math.PI*2);cx.stroke();cx.setLineDash([]);}
-  const bodyGrad=cx.createRadialGradient(px-4,py-4,0,px,py,P.r);bodyGrad.addColorStop(0,'#5bf');bodyGrad.addColorStop(1,'#28a');cx.fillStyle=bodyGrad;cx.shadowColor='#4af';cx.shadowBlur=10;cx.beginPath();cx.arc(px,py,P.r,0,Math.PI*2);cx.fill();cx.shadowBlur=0;
-  cx.strokeStyle='#0af';cx.lineWidth=2;cx.beginPath();cx.arc(px,py,P.r,0,Math.PI*2);cx.stroke();
-  cx.fillStyle='#28a';cx.beginPath();cx.arc(px-10,py-6,7,0,Math.PI*2);cx.fill();cx.beginPath();cx.arc(px+10,py-6,7,0,Math.PI*2);cx.fill();
-  cx.fillStyle='#8df';cx.shadowColor='#8df';cx.shadowBlur=4;cx.beginPath();cx.ellipse(px,py-6,10,5,0,-.3,Math.PI+.3);cx.fill();cx.shadowBlur=0;
-  cx.fillStyle='#fff';cx.beginPath();cx.arc(px-4,py-7,2,0,Math.PI*2);cx.fill();cx.beginPath();cx.arc(px+4,py-7,2,0,Math.PI*2);cx.fill();
+  const lp2=P.walkCycle;
+  // 走路时的小腿（Q版短腿摆动）
+  cx.strokeStyle='#d4a574';cx.lineWidth=4;cx.lineCap='round';
+  cx.beginPath();cx.moveTo(px-5,py+P.r-2);cx.lineTo(px-5+Math.sin(lp2)*4,py+P.r+8);cx.stroke();
+  cx.beginPath();cx.moveTo(px+5,py+P.r-2);cx.lineTo(px+5+Math.sin(lp2+Math.PI)*4,py+P.r+8);cx.stroke();
+  // 小靴子
+  cx.fillStyle='#5a3a1a';
+  cx.beginPath();cx.ellipse(px-5+Math.sin(lp2)*4,py+P.r+9,5,3,0,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.ellipse(px+5+Math.sin(lp2+Math.PI)*4,py+P.r+9,5,3,0,0,Math.PI*2);cx.fill();
+  // 身体（铠甲）
+  const bodyG=cx.createRadialGradient(px-2,py+2,0,px,py+2,P.r*.85);
+  bodyG.addColorStop(0,'#6a9fd8');bodyG.addColorStop(0.6,'#3a7bc8');bodyG.addColorStop(1,'#1e4d8a');
+  cx.fillStyle=bodyG;cx.shadowColor='rgba(58,123,200,0.4)';cx.shadowBlur=6;
+  cx.beginPath();cx.ellipse(px,py+2,P.r*.75,P.r*.85,0,0,Math.PI*2);cx.fill();cx.shadowBlur=0;
+  // 铠甲纹路
+  cx.strokeStyle='rgba(100,180,255,0.3)';cx.lineWidth=1;
+  cx.beginPath();cx.moveTo(px,py-P.r*.5);cx.lineTo(px,py+P.r*.6);cx.stroke();
+  cx.beginPath();cx.moveTo(px-P.r*.5,py);cx.lineTo(px+P.r*.5,py);cx.stroke();
+  // 肩甲
+  cx.fillStyle='#4a8ad4';
+  cx.beginPath();cx.ellipse(px-P.r*.7,py-2,6,5,-.2,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.ellipse(px+P.r*.7,py-2,6,5,.2,0,Math.PI*2);cx.fill();
+  cx.strokeStyle='#2a6ab4';cx.lineWidth=1;
+  cx.beginPath();cx.ellipse(px-P.r*.7,py-2,6,5,-.2,0,Math.PI*2);cx.stroke();
+  cx.beginPath();cx.ellipse(px+P.r*.7,py-2,6,5,.2,0,Math.PI*2);cx.stroke();
+  // 头部（大头Q版）
+  const hr=P.r*.7;
+  const headG=cx.createRadialGradient(px-3,py-P.r*.5,0,px,py-P.r*.5,hr);
+  headG.addColorStop(0,'#ffe4c4');headG.addColorStop(0.7,'#f5c9a0');headG.addColorStop(1,'#e0a878');
+  cx.fillStyle=headG;cx.shadowColor='rgba(0,0,0,0.15)';cx.shadowBlur=4;
+  cx.beginPath();cx.arc(px,py-P.r*.5,hr,0,Math.PI*2);cx.fill();cx.shadowBlur=0;
+  // 头发
+  cx.fillStyle='#3a2a1a';
+  cx.beginPath();cx.arc(px,py-P.r*.5-2,hr+1,Math.PI+0.3,Math.PI*2-0.3);cx.fill();
+  // 刘海
+  cx.beginPath();cx.moveTo(px-hr+2,py-P.r*.5-1);cx.quadraticCurveTo(px-hr*.3,py-P.r*.5+3,px-2,py-P.r*.5+4);cx.lineTo(px-hr*.5,py-P.r*.5-5);cx.closePath();cx.fill();
+  cx.beginPath();cx.moveTo(px+hr-2,py-P.r*.5-1);cx.quadraticCurveTo(px+hr*.3,py-P.r*.5+3,px+2,py-P.r*.5+4);cx.lineTo(px+hr*.5,py-P.r*.5-5);cx.closePath();cx.fill();
+  // 眼睛（大Q版眼）
+  // 左眼白
+  cx.fillStyle='#fff';cx.beginPath();cx.ellipse(px-5,py-P.r*.52,4.5,5,0,0,Math.PI*2);cx.fill();
+  // 右眼白
+  cx.beginPath();cx.ellipse(px+5,py-P.r*.52,4.5,5,0,0,Math.PI*2);cx.fill();
+  // 左瞳孔
+  cx.fillStyle='#2255aa';cx.beginPath();cx.arc(px-4.5,py-P.r*.5,3,0,Math.PI*2);cx.fill();
+  // 右瞳孔
+  cx.beginPath();cx.arc(px+4.5,py-P.r*.5,3,0,Math.PI*2);cx.fill();
+  // 瞳孔高光
+  cx.fillStyle='#fff';
+  cx.beginPath();cx.arc(px-3.5,py-P.r*.52,1.2,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.arc(px+5.5,py-P.r*.52,1.2,0,Math.PI*2);cx.fill();
+  // 小嘴
+  cx.strokeStyle='#c07060';cx.lineWidth=1.2;cx.lineCap='round';
+  cx.beginPath();cx.arc(px,py-P.r*.38,2.5,0.1,Math.PI-0.1);cx.stroke();
+  // 红脸蛋
+  cx.fillStyle='rgba(255,120,120,0.35)';
+  cx.beginPath();cx.ellipse(px-8,py-P.r*.4,3,2,0,0,Math.PI*2);cx.fill();
+  cx.beginPath();cx.ellipse(px+8,py-P.r*.4,3,2,0,0,Math.PI*2);cx.fill();
+  // 武器
   const ga=P.angle;
   const gunColors=['#556','#665','#655','#5af','#a5a'];
   const gunLen=[22,18,28,30,22];
   const gunW=[4,6,8,3,5];
   const wi=P.wpn;
   cx.save();cx.translate(px,py);cx.rotate(ga);
-  cx.fillStyle=gunColors[wi];cx.fillRect(P.r-2,-gunW[wi]/2,gunLen[wi],gunW[wi]);
+  cx.fillStyle=gunColors[wi];cx.fillRect(P.r-4,-gunW[wi]/2,gunLen[wi],gunW[wi]);
   cx.fillStyle='#334';cx.fillRect(P.r+gunLen[wi]-4,-gunW[wi]/2-1,5,gunW[wi]+2);
   if(P.muzzleFlash>0){P.muzzleFlash--;const fg=cx.createRadialGradient(P.r+gunLen[wi],0,0,P.r+gunLen[wi],0,20);fg.addColorStop(0,'rgba(255,255,200,0.9)');fg.addColorStop(0.3,'rgba(255,200,50,0.5)');fg.addColorStop(1,'rgba(0,0,0,0)');cx.fillStyle=fg;cx.beginPath();cx.arc(P.r+gunLen[wi],0,20,0,Math.PI*2);cx.fill();}
   cx.restore();
-  const lp2=P.walkCycle;cx.strokeStyle='#28a';cx.lineWidth=3;cx.lineCap='round';cx.beginPath();cx.moveTo(px-5,py+P.r*.5);cx.lineTo(px-5+Math.sin(lp2)*5,py+P.r+6);cx.stroke();cx.beginPath();cx.moveTo(px+5,py+P.r*.5);cx.lineTo(px+5+Math.sin(lp2+Math.PI)*5,py+P.r+6);cx.stroke();
 
   floatingTexts.forEach(f=>{cx.globalAlpha=f.life;cx.fillStyle=f.color;cx.font='bold 14px Microsoft YaHei';cx.textAlign='center';cx.fillText(f.text,f.x,f.y);cx.globalAlpha=1;});
 
