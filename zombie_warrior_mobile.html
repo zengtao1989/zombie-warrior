@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>战士大战僵尸 - 50关终极版(移动版)</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:none}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body{background:#000;font-family:'Microsoft YaHei',sans-serif;overflow:hidden;position:fixed;width:100%;height:100%}
 canvas{display:block}
 
@@ -24,17 +24,17 @@ canvas{display:block}
 #wave-lbl{color:#f80;font-size:10px;text-shadow:0 0 4px #f804}
 
 /* Shop button */
-#shop-btn{position:fixed;top:5px;left:5px;width:36px;height:36px;background:rgba(0,0,0,.8);border:2px solid #fc0;border-radius:8px;z-index:11;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 0 8px #fc04;pointer-events:all;touch-action:manipulation}
+#shop-btn{position:fixed;top:5px;left:5px;width:36px;height:36px;background:rgba(0,0,0,.8);border:2px solid #fc0;border-radius:8px;z-index:20;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 0 8px #fc04;pointer-events:all;touch-action:manipulation}
 
 /* Weapon bar */
-#wpn-bar{position:fixed;top:5px;right:5px;display:flex;flex-direction:column;gap:3px;z-index:11}
+#wpn-bar{position:fixed;top:5px;right:5px;display:flex;flex-direction:column;gap:3px;z-index:20;touch-action:manipulation}
 .wb{background:rgba(0,0,0,.8);border:1px solid #333;border-radius:5px;padding:3px 6px;color:#aaa;font-size:9px;display:flex;align-items:center;gap:4px;pointer-events:all;touch-action:manipulation}
 .wb.act{border-color:#ff0;color:#ff0;box-shadow:0 0 6px #ff04}
 .wb.locked{opacity:.4}
 .wb .wi{font-size:14px}
 
 /* Skill bar */
-#skill-bar{position:fixed;right:5px;bottom:120px;display:flex;flex-direction:column;gap:5px;z-index:11}
+#skill-bar{position:fixed;right:5px;bottom:120px;display:flex;flex-direction:column;gap:5px;z-index:20;touch-action:manipulation}
 .sk-s{width:48px;height:48px;border-radius:8px;border:2px solid #333;background:rgba(0,0,0,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;color:#fff;font-size:8px;gap:1px;pointer-events:all;backdrop-filter:blur(4px);touch-action:manipulation}
 .sk-s.ready{border-color:#f80;box-shadow:0 0 10px #f806}
 .sk-s .si{font-size:18px}
@@ -42,14 +42,14 @@ canvas{display:block}
 .sk-s .cd{position:absolute;inset:0;border-radius:6px;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;color:#ff0;font-size:10px;font-weight:bold}
 
 /* Joystick */
-#joystick-zone{position:fixed;left:0;bottom:0;width:45%;height:55%;z-index:12;pointer-events:all}
+#joystick-zone{position:fixed;left:0;bottom:0;width:45%;height:55%;z-index:5;pointer-events:all}
 #joystick-base{position:fixed;left:30px;bottom:30px;width:120px;height:120px;background:rgba(60,60,60,.5);border:3px solid rgba(100,100,100,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 0 15px rgba(0,0,0,.5)}
 #joystick-thumb{position:absolute;width:50px;height:50px;background:radial-gradient(circle at 30% 30%,rgba(120,120,120,.9),rgba(60,60,60,.9));border:2px solid rgba(150,150,150,.8);border-radius:50%;transition:transform .05s;pointer-events:none;box-shadow:0 0 10px rgba(0,0,0,.5)}
 #joystick-thumb.active{background:radial-gradient(circle at 30% 30%,rgba(150,150,150,.9),rgba(100,100,100,.9));border-color:rgba(200,200,200,.9);box-shadow:0 0 15px rgba(100,100,200,.5)}
 
 /* Fire zone */
-#fire-zone{position:fixed;right:0;bottom:0;width:55%;height:55%;z-index:12;pointer-events:all}
-#fire-btn{position:fixed;right:25px;bottom:35px;width:70px;height:70px;background:radial-gradient(circle at 30% 30%,rgba(200,60,60,.9),rgba(120,30,30,.9));border:3px solid rgba(220,80,80,.8);border-radius:50%;display:flex;align-items:center;justify-content:center;pointer-events:all;box-shadow:0 0 15px rgba(200,50,50,.4)}
+#fire-zone{position:fixed;right:0;bottom:0;width:55%;height:55%;z-index:5;pointer-events:all}
+#fire-btn{position:fixed;right:25px;bottom:35px;width:70px;height:70px;background:radial-gradient(circle at 30% 30%,rgba(200,60,60,.9),rgba(120,30,30,.9));border:3px solid rgba(220,80,80,.8);border-radius:50%;display:flex;align-items:center;justify-content:center;pointer-events:all;box-shadow:0 0 15px rgba(200,50,50,.4);z-index:6}
 #fire-btn.active{background:radial-gradient(circle at 30% 30%,rgba(255,80,80,.9),rgba(180,50,50,.9));box-shadow:0 0 25px rgba(255,50,50,.6)}
 #fire-btn span{color:#fff;font-size:10px;font-weight:bold;text-shadow:0 0 5px rgba(0,0,0,.8)}
 
@@ -103,7 +103,7 @@ canvas{display:block}
 .si p{font-size:9px;color:#999;margin-bottom:5px;line-height:1.5}
 .si .pr{color:#f80;font-weight:bold;font-size:11px}
 .si .lv{color:#88f;font-size:9px;float:right}
-#shp-x{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99;height:44px;padding:0 28px;border-radius:22px;background:rgba(180,0,0,.9);color:#fff;font-size:16px;border:2px solid #f44;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;box-shadow:0 0 12px #f004;line-height:1;touch-action:manipulation}
+#shp-x{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:200;height:44px;padding:0 28px;border-radius:22px;background:rgba(180,0,0,.9);color:#fff;font-size:16px;border:2px solid #f44;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;box-shadow:0 0 12px #f004;line-height:1;touch-action:manipulation;pointer-events:all}
 #shp-x:active{background:#c00;transform:translateX(-50%) scale(1.08);box-shadow:0 0 20px #f008}
 
 /* Wave progress indicator */
@@ -1202,8 +1202,13 @@ fireZone.addEventListener('touchcancel',function(e){
   fireBtn.classList.remove('active');
 },false);
 
-// Prevent default touch behaviors
-document.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+// Prevent default touch behaviors only on game zones (not UI buttons)
+document.addEventListener('touchmove',function(e){
+  const t=e.target;
+  if(t.closest('#joystick-zone')||t.closest('#fire-zone')||t.closest('canvas')){
+    e.preventDefault();
+  }
+},{passive:false});
 
 // ===== KEYBOARD FALLBACK =====
 window.addEventListener('keydown',e=>{
