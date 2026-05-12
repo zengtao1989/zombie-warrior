@@ -26,8 +26,9 @@ canvas{display:block}
 .sk-s .si{font-size:22px}
 .sk-s .sk{font-size:10px;color:#999;position:absolute;bottom:2px;right:4px}
 .sk-s .cd{position:absolute;inset:0;border-radius:6px;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;color:#ff0;font-size:13px;font-weight:bold}
-#wpn-bar{position:fixed;bottom:12px;right:14px;display:flex;flex-direction:column;gap:5px;z-index:10;pointer-events:none}
-.w-s{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.75);border-radius:6px;padding:4px 10px;border:1px solid #333;color:#aaa;font-size:11px;backdrop-filter:blur(4px);transition:all .15s}
+#wpn-bar{position:fixed;bottom:12px;right:14px;display:flex;flex-direction:column;gap:5px;z-index:10}
+.w-s{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.75);border-radius:6px;padding:4px 10px;border:1px solid #333;color:#aaa;font-size:11px;backdrop-filter:blur(4px);transition:all .15s;cursor:pointer}
+.w-s:hover{border-color:#ff0;box-shadow:0 0 8px #ff04}
 .w-s.act{border-color:#ff0;color:#ff0;box-shadow:0 0 8px #ff04}
 .w-s .wi{font-size:18px}
 #overlay{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(40,0,0,.95),rgba(0,0,0,.98))}
@@ -36,7 +37,14 @@ canvas{display:block}
 #overlay button{background:linear-gradient(135deg,#c00,#600);color:#fff;border:2px solid #f44;padding:14px 52px;font-size:20px;border-radius:8px;cursor:pointer;font-family:inherit;box-shadow:0 4px 30px #f006,0 0 60px #f003;transition:all .2s;letter-spacing:2px}
 #overlay button:hover{background:linear-gradient(135deg,#f00,#c00);transform:scale(1.06);box-shadow:0 4px 40px #f008,0 0 80px #f005}
 #sp{position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;overflow-y:auto}
-#sp .sb{max-width:620px;background:linear-gradient(135deg,#1a0808,#0a0404);border:2px solid #600;border-radius:14px;padding:28px;color:#eee;line-height:2;font-size:15px;box-shadow:0 0 50px #f002,0 0 100px #f001}
+#sp .princess-avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#f9a,#f06);display:flex;align-items:center;justify-content:center;font-size:48px;margin:0 auto 12px;box-shadow:0 0 20px #f9a6,0 0 40px #f064;animation:princessGlow 2s ease-in-out infinite;position:relative;overflow:hidden}
+#sp .princess-avatar::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.25),transparent 60%);pointer-events:none}
+#sp .avatar-dark{box-shadow:0 0 20px #a4f6,0 0 40px #6008}
+#sp .avatar-boss{width:100px;height:100px;font-size:56px;box-shadow:0 0 30px #f006,0 0 60px #a0f4;animation:bossGlow 1.5s ease-in-out infinite}
+#sp .avatar-win{width:100px;height:100px;font-size:56px;box-shadow:0 0 30px #f9a8,0 0 60px #fc06;animation:winGlow 2s ease-in-out infinite}
+@keyframes princessGlow{0%,100%{box-shadow:0 0 20px #f9a6,0 0 40px #f064}50%{box-shadow:0 0 30px #f9aa,0 0 60px #f088}}
+@keyframes bossGlow{0%,100%{box-shadow:0 0 30px #f006,0 0 60px #a0f4}50%{box-shadow:0 0 40px #f00a,0 0 80px #a0f8}}
+@keyframes winGlow{0%,100%{box-shadow:0 0 30px #f9a8,0 0 60px #fc06}50%{box-shadow:0 0 50px #f9ac,0 0 80px #fc0a}}
 #sp h2{color:#f44;text-align:center;margin-bottom:14px;font-size:22px;text-shadow:0 0 10px #f004}
 #sp .pt{text-align:center;font-size:64px;margin-bottom:8px;filter:drop-shadow(0 0 12px #f004)}
 #sp button{background:linear-gradient(135deg,#900,#500);color:#fff;border:1px solid #a00;padding:11px 40px;font-size:16px;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s}
@@ -52,8 +60,8 @@ canvas{display:block}
 .si p{font-size:11px;color:#999;margin-bottom:8px;line-height:1.6}
 .si .pr{color:#f80;font-weight:bold;font-size:13px}
 .si .lv{color:#88f;font-size:11px;float:right}
-#sc{background:linear-gradient(135deg,#600,#300);color:#fff;border:1px solid #a00;padding:10px 36px;font-size:15px;border-radius:8px;cursor:pointer;font-family:inherit;margin-top:18px;transition:all .15s}
-#sc:hover{background:linear-gradient(135deg,#800,#500)}
+#shp-x{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99;height:48px;padding:0 32px;border-radius:24px;background:rgba(180,0,0,.9);color:#fff;font-size:18px;border:2px solid #f44;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;box-shadow:0 0 12px #f004;line-height:1}
+#shp-x:hover{background:#c00;transform:translateX(-50%) scale(1.08);box-shadow:0 0 20px #f008}
 #bb{position:fixed;top:46px;left:50%;transform:translateX(-50%);width:320px;z-index:10;pointer-events:none;display:none}
 #bb-l{color:#f44;font-size:12px;text-align:center;margin-bottom:2px;text-shadow:0 0 6px #f004}
 #bb-bg{height:12px;background:linear-gradient(180deg,#200,#100);border-radius:6px;overflow:hidden;border:1px solid #600}
@@ -83,11 +91,11 @@ canvas{display:block}
  <div class="sk-s" id="sk3"><span class="si">⚡</span><span>极速</span><span class="sk">F</span></div>
 </div>
 <div id="wpn-bar">
- <div class="w-s act" id="w0"><span class="wi">🔫</span><span id="w0n">手枪 Lv1</span></div>
- <div class="w-s" id="w1"><span class="wi">💥</span><span id="w1n">霰弹枪</span></div>
- <div class="w-s" id="w2"><span class="wi">🚀</span><span id="w2n">火箭筒</span></div>
- <div class="w-s" id="w3"><span class="wi">⚡</span><span id="w3n">激光炮</span></div>
- <div class="w-s" id="w4"><span class="wi">🔱</span><span id="w4n">散弹炮</span></div>
+ <div class="w-s act" id="w0" onclick="switchWpn(0)"><span class="wi">🔫</span><span id="w0n">手枪 Lv1</span></div>
+ <div class="w-s" id="w1" onclick="switchWpn(1)"><span class="wi">💥</span><span id="w1n">霰弹枪</span></div>
+ <div class="w-s" id="w2" onclick="switchWpn(2)"><span class="wi">🚀</span><span id="w2n">火箭筒</span></div>
+ <div class="w-s" id="w3" onclick="switchWpn(3)"><span class="wi">⚡</span><span id="w3n">激光炮</span></div>
+ <div class="w-s" id="w4" onclick="switchWpn(4)"><span class="wi">🔱</span><span id="w4n">散弹炮</span></div>
 </div>
 <div id="overlay">
  <h1>⚔️ 战士大战僵尸</h1>
@@ -95,14 +103,19 @@ canvas{display:block}
  <button onclick="startGame()">开始战斗</button>
 </div>
 <div id="sp" style="display:none">
- <div class="sb"><div class="pt" id="s-pt">⚔️</div><h2 id="s-tl">??</h2><div id="s-tx">...</div></div>
+ <div class="sb">
+  <div class="princess-avatar" id="princess-avatar">🌹</div>
+  <div class="pt" id="s-pt">⚔️</div>
+  <h2 id="s-tl">??</h2>
+  <div id="s-tx">...</div>
+ </div>
  <button id="s-bn" onclick="closeStory()">继续战斗</button>
 </div>
+<button id="shp-x" onclick="closeShop()" title="关闭商店" style="display:none">✕ 关闭商店</button>
 <div id="shp" style="display:none">
  <h2>⚔️ 升级商店</h2>
  <div class="cn" id="shp-c">🪙 0</div>
  <div class="sg" id="shp-g"></div>
- <button id="sc" onclick="closeShop()">关闭 [TAB]</button>
 </div>
 
 <script>
@@ -141,7 +154,7 @@ const G={state:'menu',wave:1,maxWave:50,score:0,coins:0,killed:0,
   xp:0,level:1,xpNeeded:100,
   keys:{},mouse:{x:W/2,y:H/2,down:false},
   cam:{x:0,y:0},shake:{x:0,y:0,t:0,intensity:0},
-  time:0,ambientLights:[],lootNotifyTmr:0,storyQueue:[],bossUp:false};
+  time:0,ambientLights:[],lootNotifyTmr:0,storyQueue:[],bossUp:false,unlockShards:{1:0,2:0,3:0,4:0}};
 
 const WW=3600,WH=3600;
 
@@ -152,7 +165,7 @@ const P={x:WW/2,y:WH/2,hp:100,mhp:100,spd:3.2,r:18,wpn:0,
 
 // ===== WEAPONS (5 weapons) =====
 const WPNS=[
-  {name:'手枪',lv:1,unlocked:true,dmg:18,rate:180,bullets:1,spread:0,spd:14,color:'#ff0',trail:'#fa0',snd:sndShoot,icon:'🔫'},
+  {name:'手枪',lv:1,unlocked:true,dmg:12,rate:220,bullets:1,spread:0,spd:14,color:'#ff0',trail:'#fa0',snd:sndShoot,icon:'🔫'},
   {name:'霰弹枪',lv:1,unlocked:false,dmg:14,rate:550,bullets:7,spread:.28,spd:11,color:'#fa0',trail:'#f80',snd:sndShotgun,icon:'💥'},
   {name:'火箭筒',lv:1,unlocked:false,dmg:90,rate:1400,bullets:1,spread:0,spd:9,color:'#f44',trail:'#f80',explosive:true,snd:sndRocket,icon:'🚀'},
   {name:'激光炮',lv:1,unlocked:false,dmg:55,rate:300,bullets:1,spread:.02,spd:22,color:'#4ff',trail:'#08f',pierce:true,snd:sndLaser,icon:'⚡'},
@@ -169,20 +182,28 @@ const SKS=[
 
 // ===== LOOT DROP TABLE =====
 const LOOT_TABLE={
-  normal:{coins:[5,12],chance:.35,items:[
-    {name:'弹药箱',icon:'📦',type:'ammo',chance:.2},
-    {name:'小血包',icon:'🩹',type:'healSmall',chance:.15},
+  normal:{coins:[5,12],chance:.45,items:[
+    {name:'小血包',icon:'🩹',type:'healSmall',chance:.25},
+    {name:'弹药箱',icon:'📦',type:'ammo',chance:.15},
   ]},
-  elite:{coins:[15,30],chance:.7,items:[
-    {name:'弹药箱',icon:'📦',type:'ammo',chance:.3},
-    {name:'大血包',icon:'💊',type:'healBig',chance:.2},
-    {name:'武器碎片',icon:'🔧',type:'weaponShard',chance:.15},
+  elite:{coins:[15,30],chance:.75,items:[
+    {name:'大血包',icon:'💊',type:'healBig',chance:.3},
+    {name:'弹药箱',icon:'📦',type:'ammo',chance:.2},
+    {name:'武器碎片',icon:'🔧',type:'weaponShard',chance:.2},
     {name:'经验宝石',icon:'💎',type:'xpGem',chance:.25},
+    {name:'霰弹枪碎片',icon:'💥',type:'unlockShard1',chance:.08},
+    {name:'火箭筒碎片',icon:'🚀',type:'unlockShard2',chance:.05},
+    {name:'激光炮碎片',icon:'⚡',type:'unlockShard3',chance:.03},
+    {name:'散弹炮碎片',icon:'🔱',type:'unlockShard4',chance:.02},
   ]},
   boss:{coins:[200,400],chance:1,items:[
+    {name:'全满药水',icon:'🧪',type:'fullHeal',chance:.5},
     {name:'传说碎片',icon:'🔶',type:'legendShard',chance:.5},
-    {name:'武器核心',icon:'⚙️',type:'weaponCore',chance:.3},
-    {name:'全满药水',icon:'🧪',type:'fullHeal',chance:.4},
+    {name:'武器核心',icon:'⚙️',type:'weaponCore',chance:.4},
+    {name:'霰弹枪',icon:'💥',type:'unlockW1',chance:.25},
+    {name:'火箭筒',icon:'🚀',type:'unlockW2',chance:.2},
+    {name:'激光炮',icon:'⚡',type:'unlockW3',chance:.15},
+    {name:'散弹炮',icon:'🔱',type:'unlockW4',chance:.1},
   ]}
 };
 
@@ -265,9 +286,9 @@ STORIES[10]={p:'💀',t:'区域Boss！',x:'一个巨大的身影从黑暗中走�
 STORIES[20]={p:'💀',t:'森林之王',x:'树木裂开，一个由枯木和暗影组成的巨人站了起来。<br><br>「森林不允许任何人通过——<br>除了我们的女王。」<br><br><strong>击败森林之王！</strong>'};
 STORIES[30]={p:'💀',t:'沙暴领主',x:'黄沙凝聚成一个巨大的沙人，双眼如烈日般灼热。<br><br>「跪下！在沙漠的主宰面前！」<br><br><strong>击败沙暴领主！</strong>'};
 STORIES[40]={p:'💀',t:'冰霜巨人',x:'寒冰碎裂，一个被冰封万年的巨人苏醒了。<br><br>「我会把你冻成永恒的冰雕！」<br><br><strong>击败冰霜巨人！</strong>'};
-STORIES[49]={p:'🌹',t:'最终Boss——黑玫瑰',x:'铁笼碎裂。她的身体悬浮在空中。<br>黑玫瑰在她身后盛开，遮天蔽日。<br><br>一红一黑的双眼俯视着你。<br><br>🖤 <em style="color:#a4f">"千年的等待……终于结束了。"<br>"你来了，我深爱的人。"</em><br><br>她的嘴角有一丝笑意——<br>不是黑暗的笑，<br>是玫瑰的笑。<br><br>🖤 <em style="color:#a4f">"杀了我……或者……让我毁灭一切。"<br>"这是你最后的选择。"</em><br><br><strong>最终的战斗——黑玫瑰·僵尸女王！</strong>'};
+STORIES[49]={p:'🌹',t:'最终Boss——黑玫瑰·僵尸女王',x:'铁笼碎裂。她的身体悬浮在空中。<br>黑玫瑰在她身后盛开，遮天蔽日。<br><br>一红一黑的双眼俯视着你。<br><br>🖤 <em style="color:#a4f">"千年的等待……终于结束了。"</em><br>🖤 <em style="color:#a4f">"你来了，我深爱的人。"</em><br><br>大地在颤抖。僵尸从裂缝中涌出——<br>不是从地下爬出来的……<br>是从她指尖的黑色花瓣中诞生的。<br><br>每一片飘落的花瓣，都化为一只僵尸。<br>她就是僵尸的源头。<br>千年轮回，由她而始。<br><br>🖤 <em style="color:#a4f">"我制造了它们……因为只有这样，<br>才能在无尽的孤独中……有人陪我。"</em><br><br>她嘴角有一丝笑意——<br>不是黑暗的笑，是玫瑰的笑。<br>千年孤独中，唯一的温柔。<br><br>🖤 <em style="color:#a4f">"杀了我……或者……让我毁灭一切。"<br>"这是你最后的选择。"</em><br><br><strong>最终的战斗——黑玫瑰·僵尸女王！</strong>'};
 // Win story
-STORIES[50]={p:'💖',t:'轮回终结',x:'最后一击——你没有用武器。<br><br>你走向她，张开了双臂。<br>黑色的能量冲击着你，灼烧着你的血肉。<br>但你没有停步。<br><br>你抱住了她。<br><br>🌹 <em style="color:#f9a">"不要……你会死的……"</em><br><br>「我说过，永远不会丢下你。」<br><br>你的体温穿透了千年黑暗，<br>她体内的黑玫瑰开始枯萎，<br>而红色的玫瑰，在废墟中重新绽放。<br><br>她的双眼中，暗红退去——<br>温暖棕色重新亮起。<br><br>🌹 <em style="color:#f9a">"你真的……来了……"</em><br><br>她扑进你的怀里，泪流满面。<br><br>「我说过会来的。」<br>「永远不会丢下你。」<br><br>黑暗消散，阳光穿透云层。<br>废土之上，两道身影并肩远去。<br><br><strong>🌹 轮回终结 🌹</strong><br><strong>爱，是最强的武器。</strong><br><br>🏆 恭喜通关50关！<br>得分: <span id="final-score">0</span> | 击杀: <span id="final-kills">0</span>'};
+STORIES[50]={p:'💖',t:'轮回终结',x:'最后一击——你没有用武器。<br><br>你走向她，张开了双臂。<br>黑色的能量冲击着你，灼烧着你的血肉。<br>但你没有停步。<br><br>你抱住了她。<br><br>🌹 <em style="color:#f9a">"不要……你会死的……"</em><br><br>「我说过，永远不会丢下你。」<br><br>你的体温穿透了千年黑暗，<br>她体内的黑玫瑰开始枯萎，<br>而红色的玫瑰，在废墟中重新绽放。<br><br>千年以来，僵尸从她的孤独中诞生——<br>每一只，都是她无处安放的爱与恐惧。<br>现在，那片花海终于凋零了。<br>没有黑玫瑰，就没有僵尸。<br>没有孤独，就没有黑暗。<br><br>她的双眼中，暗红退去——<br>温暖棕色重新亮起。<br><br>🌹 <em style="color:#f9a">"你真的……来了……"</em><br><br>她扑进你的怀里，泪流满面。<br><br>「我说过会来的。」<br>「永远不会丢下你。」<br><br>黑暗消散，阳光穿透云层。<br>废土之上，两道身影并肩远去。<br><br><strong>🌹 轮回终结 🌹</strong><br><strong>爱，是最强的武器。</strong><br><br>🏆 恭喜通关50关！<br>得分: <span id="final-score">0</span> | 击杀: <span id="final-kills">0</span>'};
 
 // Fill wave stories
 for(let i=0;i<MEMORIES.length;i++){
@@ -339,8 +360,8 @@ genWorld(0);
 
 // ===== SPAWN =====
 function spawnWave(w){
-  const base=6+w*4;
-  const regionBonus=Math.floor(w/10)*8;
+  const base=4+w*3;
+  const regionBonus=Math.floor(w/10)*5;
   zThisWave=base+regionBonus;
   zSpawned=0;
 }
@@ -353,14 +374,14 @@ function spawnZ(){
   else{x=G.cam.x-70;y=G.cam.y+Math.random()*H;}
   x=Math.max(30,Math.min(WW-30,x));y=Math.max(30,Math.min(WH-30,y));
   const w=G.wave;
-  const elite=w>3&&Math.random()<.12+Math.floor(w/15)*.03;
-  const fast=w>2&&Math.random()<.18+Math.floor(w/12)*.02;
-  const tanky=w>8&&Math.random()<.08+Math.floor(w/20)*.02;
-  let hpMult=1+Math.floor(w/10)*.4;
-  const hp=(25+w*14)*hpMult*(elite?3:1)*(fast?.7:1)*(tanky?4:1);
+  const elite=w>5&&Math.random()<.10+Math.floor(w/15)*.02;
+  const fast=w>3&&Math.random()<.15+Math.floor(w/12)*.02;
+  const tanky=w>10&&Math.random()<.06+Math.floor(w/20)*.02;
+  let hpMult=1+Math.floor(w/10)*.5;
+  const hp=(40+w*20)*hpMult*(elite?3:1)*(fast?.7:1)*(tanky?4:1);
   let r=elite?30:fast?16:tanky?28:20;
-  let spd=(.9+Math.random()*.5+w*.08)*(fast?1.6:tanky?.6:1);
-  let dmg=elite?18:fast?6:tanky?22:10;
+  let spd=(.7+Math.random()*.4+w*.05)*(fast?1.5:tanky?.5:1);
+  let dmg=elite?15:fast?5:tanky?18:8;
   let type=elite?'elite':fast?'fast':tanky?'tanky':'normal';
   zombies.push({x,y,hp,mhp:hp,spd,r,type,dmg,burning:0,hitFlash:0,angle:Math.random()*Math.PI*2,wobble:Math.random()*1000,limbPhase:Math.random()*Math.PI*2});
   zSpawned++;
@@ -385,7 +406,7 @@ function rollLoot(z){
 }
 function collectLoot(item){
   switch(item.type){
-    case 'ammo': /* infinite ammo */ break;
+    case 'ammo': break;
     case 'healSmall': P.hp=Math.min(P.hp+25,P.mhp);addFloatText(P.x,P.y-30,'+25HP','#4f4');break;
     case 'healBig': P.hp=Math.min(P.hp+60,P.mhp);addFloatText(P.x,P.y-30,'+60HP','#4f4');break;
     case 'fullHeal': P.hp=P.mhp;addFloatText(P.x,P.y-30,'HP满!','#4f4');break;
@@ -393,8 +414,16 @@ function collectLoot(item){
     case 'weaponShard': P.bulletBonus=Math.min(P.bulletBonus+1,6);addFloatText(P.x,P.y-30,'子弹+1!','#ff8');break;
     case 'weaponCore': WPNS[P.wpn].dmg=Math.floor(WPNS[P.wpn].dmg*1.2);addFloatText(P.x,P.y-30,'武器强化!','#ff8');break;
     case 'legendShard': P.mhp+=20;P.hp=Math.min(P.hp+20,P.mhp);addFloatText(P.x,P.y-30,'HP上限+20!','#f8f');break;
+    case 'unlockShard1': G.unlockShards[1]=(G.unlockShards[1]||0)+1;if(G.unlockShards[1]>=3&&!WPNS[1].unlocked){WPNS[1].unlocked=true;addFloatText(P.x,P.y-30,'💥 霰弹枪解锁!','#ff0');switchWpn(1);}else addFloatText(P.x,P.y-30,'霰弹枪碎片 '+G.unlockShards[1]+'/3','#fa0');break;
+    case 'unlockShard2': G.unlockShards[2]=(G.unlockShards[2]||0)+1;if(G.unlockShards[2]>=3&&!WPNS[2].unlocked){WPNS[2].unlocked=true;addFloatText(P.x,P.y-30,'🚀 火箭筒解锁!','#ff0');switchWpn(2);}else addFloatText(P.x,P.y-30,'火箭筒碎片 '+G.unlockShards[2]+'/3','#fa0');break;
+    case 'unlockShard3': G.unlockShards[3]=(G.unlockShards[3]||0)+1;if(G.unlockShards[3]>=3&&!WPNS[3].unlocked){WPNS[3].unlocked=true;addFloatText(P.x,P.y-30,'⚡ 激光炮解锁!','#ff0');switchWpn(3);}else addFloatText(P.x,P.y-30,'激光炮碎片 '+G.unlockShards[3]+'/3','#fa0');break;
+    case 'unlockShard4': G.unlockShards[4]=(G.unlockShards[4]||0)+1;if(G.unlockShards[4]>=3&&!WPNS[4].unlocked){WPNS[4].unlocked=true;addFloatText(P.x,P.y-30,'🔱 散弹炮解锁!','#ff0');switchWpn(4);}else addFloatText(P.x,P.y-30,'散弹炮碎片 '+G.unlockShards[4]+'/3','#fa0');break;
+    case 'unlockW1': if(!WPNS[1].unlocked){WPNS[1].unlocked=true;addFloatText(P.x,P.y-30,'💥 霰弹枪解锁!','#ff0');switchWpn(1);}else{G.coins+=80;addFloatText(P.x,P.y-30,'+80🪙','#fc0');}break;
+    case 'unlockW2': if(!WPNS[2].unlocked){WPNS[2].unlocked=true;addFloatText(P.x,P.y-30,'🚀 火箭筒解锁!','#ff0');switchWpn(2);}else{G.coins+=120;addFloatText(P.x,P.y-30,'+120🪙','#fc0');}break;
+    case 'unlockW3': if(!WPNS[3].unlocked){WPNS[3].unlocked=true;addFloatText(P.x,P.y-30,'⚡ 激光炮解锁!','#ff0');switchWpn(3);}else{G.coins+=200;addFloatText(P.x,P.y-30,'+200🪙','#fc0');}break;
+    case 'unlockW4': if(!WPNS[4].unlocked){WPNS[4].unlocked=true;addFloatText(P.x,P.y-30,'🔱 散弹炮解锁!','#ff0');switchWpn(4);}else{G.coins+=300;addFloatText(P.x,P.y-30,'+300🪙','#fc0');}break;
   }
-  sndLoot();updHP();
+  sndLoot();updHP();updWpn();
 }
 function showLootNotify(text){
   const el=document.getElementById('loot-notify');
@@ -477,6 +506,44 @@ function showStory(k){
   document.getElementById('s-pt').textContent=s.p;
   document.getElementById('s-tl').textContent=s.t;
   document.getElementById('s-tx').innerHTML=s.x;
+
+  // Set princess avatar based on story type
+  const avatar=document.getElementById('princess-avatar');
+  avatar.className='princess-avatar';
+  if(k===0){
+    avatar.textContent='⚔️';avatar.style.background='linear-gradient(135deg,#a4f,#88f)';
+  }else if(k===50){
+    avatar.textContent='💖';avatar.style.background='linear-gradient(135deg,#f9a,#f0f)';
+    avatar.classList.add('avatar-win');
+  }else if(k===49){
+    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#600,#300)';
+    avatar.classList.add('avatar-boss');
+  }else if(k===10||k===20||k===30||k===40){
+    avatar.textContent='💀';avatar.style.background='linear-gradient(135deg,#400,#200)';
+  }else if(s.p==='🌹'){
+    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#f9a,#f06)';
+  }else if(s.p==='🖤'){
+    avatar.textContent='🖤';avatar.style.background='linear-gradient(135deg,#600,#400)';
+    avatar.classList.add('avatar-dark');
+  }else if(s.p==='🧟'){
+    avatar.textContent='🧟';avatar.style.background='linear-gradient(135deg,#484,#282)';
+  }else if(s.p==='👑'){
+    avatar.textContent='👑';avatar.style.background='linear-gradient(135deg,#a4f,#408)';
+    avatar.classList.add('avatar-dark');
+  }else if(s.p==='💔'){
+    avatar.textContent='💔';avatar.style.background='linear-gradient(135deg,#a00,#500)';
+  }else if(s.p==='⚡'){
+    avatar.textContent='⚡';avatar.style.background='linear-gradient(135deg,#600,#400)';
+    avatar.classList.add('avatar-dark');
+  }else if(s.p==='🔥'){
+    avatar.textContent='🔥';avatar.style.background='linear-gradient(135deg,#f80,#a40)';
+  }else if(s.p==='🌑'){
+    avatar.textContent='🌑';avatar.style.background='linear-gradient(135deg,#222,#000)';
+    avatar.classList.add('avatar-dark');
+  }else{
+    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#f9a,#f06)';
+  }
+
   document.getElementById('sp').style.display='flex';
   const isWin=k===50;
   document.getElementById('s-bn').textContent=isWin?'重新游戏':'继续战斗';
@@ -493,8 +560,8 @@ function showStory(k){
 function closeStory(){G.state='playing';document.getElementById('sp').style.display='none';}
 
 // ===== SHOP =====
-function openShop(){G.state='shop';renderShop();document.getElementById('shp').style.display='flex';}
-function closeShop(){G.state='playing';document.getElementById('shp').style.display='none';}
+function openShop(){G.state='shop';renderShop();document.getElementById('shp').style.display='flex';document.getElementById('shp-x').style.display='flex';}
+function closeShop(){G.state='playing';document.getElementById('shp').style.display='none';document.getElementById('shp-x').style.display='none';}
 function renderShop(){
   document.getElementById('shp-c').textContent='🪙 金币: '+G.coins;
   const g=document.getElementById('shp-g');g.innerHTML='';
@@ -585,7 +652,7 @@ function update(now,dt){
   else{G.shake.x=0;G.shake.y=0;}
 
   if(G.mouse.down)shoot(now);
-  if(zSpawned<zThisWave){wvTmr+=dt;if(wvTmr>500){wvTmr=0;spawnZ();}}
+  if(zSpawned<zThisWave){wvTmr+=dt;if(wvTmr>800){wvTmr=0;spawnZ();}}
 
   const amx=G.mouse.x+G.cam.x+G.shake.x,amy=G.mouse.y+G.cam.y+G.shake.y;
   P.angle=Math.atan2(amy-P.y,amx-P.x);
@@ -964,7 +1031,7 @@ window.addEventListener('wheel',e=>{
   if(WPNS[nw].unlocked)switchWpn(nw);
 });
 
-function switchWpn(i){if(!WPNS[i].unlocked)return;P.wpn=i;updWpn();}
+function switchWpn(i){if(!WPNS[i].unlocked){addFloatText(P.x,P.y-30,'🔒 未解锁','#f44');return;}P.wpn=i;updWpn();}
 
 // ===== GAME FLOW =====
 function startGame(){
@@ -975,12 +1042,37 @@ function startGame(){
 }
 function gameDead(){
   G.state='dead';sndDeath();
-  const ov=document.getElementById('overlay');
-  ov.querySelector('h1').textContent='💀 你倒下了';
-  ov.querySelector('.sub').innerHTML=`得分: ${G.score}  击杀: ${G.killed}<br>到达第 ${G.wave} 波<br>🌹 真相尚未揭开……`;
-  ov.querySelector('button').textContent='重新挑战';
-  ov.querySelector('button').onclick=()=>location.reload();
-  ov.style.display='flex';
+  // Show death story with princess avatar
+  const deathStories=[
+    {p:'💔',t:'她的呼唤',x:'你倒下了。<br><br>黑暗中，她的声音传来——<br><br>🌹 <em style="color:#f9a">"不要死……求你……<br>你不能丢下我……"</em><br><br>她的泪水滴在你冰冷的脸上。<br>但你的眼睛，已经无法再看见她了。<br><br>🌹 <em style="color:#f9a">"你答应过我的……<br>你说永远不会丢下我……"</em><br><br>她的声音在风中消散。<br>而黑暗，再次将一切吞没。'},
+    {p:'🌹',t:'未完的承诺',x:'你的手垂落在地上。<br><br>她跪在你身旁，握住你已经冰冷的手。<br><br>🌹 <em style="color:#f9a">"还记得那个春天吗？<br>你说要保护我一辈子……"</em><br><br>风吹过废墟，带走了最后一丝温度。<br><br>🌹 <em style="color:#f9a">"我不会放手的……<br>即使你不在了……<br>我也会在这里等你……"</em><br><br>千年轮回，又多了一个遗憾。'},
+    {p:'🖤',t:'黑暗的低语',x:'你倒下了。<br><br>黑暗中，一个声音在笑——<br><br>🖤 <em style="color:#a4f">"又失败了。<br>千年来，每一个勇敢的灵魂都倒在这里。"</em><br><br>她的另一面，从阴影中走出。<br><br>🖤 <em style="color:#a4f">"你以为你能救她？<br>没有人能从黑暗中带走我的玫瑰。"</em><br><br>暗红色的花瓣飘落，覆盖了你的身体。<br>轮回继续。真相，仍未揭开。'},
+    {p:'🌙',t:'月光下的告别',x:'月光照亮了战场。<br><br>她站在你倒下的地方，一动不动。<br><br>🌹 <em style="color:#f9a">"如果我能更早告诉你真相……<br>如果我没有选择独自承受……"</em><br><br>她的影子在月光下颤抖。<br><br>🌹 <em style="color:#f9a">"对不起……是我害了你。<br>但我会继续等……<br>等下一个千年……等下一个你……"</em><br><br>月光冷冷地照着，那朵红色的玫瑰在风中摇曳。'},
+  ];
+  const story=deathStories[Math.floor(Math.random()*deathStories.length)];
+  document.getElementById('s-pt').textContent=story.p;
+  document.getElementById('s-tl').textContent=story.t;
+  document.getElementById('s-tx').innerHTML=story.x;
+  // Set avatar for death story
+  const avatar=document.getElementById('princess-avatar');
+  avatar.className='princess-avatar';
+  if(story.p==='🖤'){
+    avatar.textContent='🖤';avatar.style.background='linear-gradient(135deg,#600,#400)';
+    avatar.classList.add('avatar-dark');
+  }else{
+    avatar.textContent='🌹';avatar.style.background='linear-gradient(135deg,#f9a,#f06)';
+  }
+  document.getElementById('s-bn').textContent='继续';
+  document.getElementById('s-bn').onclick=()=>{
+    document.getElementById('sp').style.display='none';
+    const ov=document.getElementById('overlay');
+    ov.querySelector('h1').textContent='💀 你倒下了';
+    ov.querySelector('.sub').innerHTML=`得分: ${G.score}  击杀: ${G.killed}<br>到达第 ${G.wave} 波<br>🌹 真相尚未揭开……`;
+    ov.querySelector('button').textContent='重新挑战';
+    ov.querySelector('button').onclick=()=>location.reload();
+    ov.style.display='flex';
+  };
+  document.getElementById('sp').style.display='flex';
 }
 
 // ===== INIT =====
