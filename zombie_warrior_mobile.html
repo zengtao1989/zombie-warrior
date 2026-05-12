@@ -27,8 +27,10 @@ canvas{display:block}
 #rb span{font-weight:bold;color:#fc0}
 /* Mobile Controls */
 #joystick-zone{position:fixed;left:0;bottom:0;width:45%;height:55%;z-index:20}
-#joystick-base{position:absolute;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.15);display:none;pointer-events:none}
-#joystick-thumb{position:absolute;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.25);border:2px solid rgba(255,255,255,.4);display:none;pointer-events:none}
+#joystick-base{position:fixed;left:30px;bottom:30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.18);pointer-events:none;transition:border-color .2s}
+#joystick-base.active{border-color:rgba(255,255,255,.35)}
+#joystick-thumb{position:fixed;left:65px;bottom:65px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.4);pointer-events:none;transition:background .15s,border-color .15s}
+#joystick-thumb.active{background:rgba(255,255,255,.38);border-color:rgba(255,255,255,.6)}
 #fire-zone{position:fixed;right:0;bottom:0;width:55%;height:55%;z-index:15}
 #fire-btn{position:fixed;right:20px;bottom:20px;width:70px;height:70px;border-radius:50%;background:rgba(255,60,60,.25);border:2px solid rgba(255,80,80,.5);z-index:25;display:flex;align-items:center;justify-content:center;font-size:28px;color:rgba(255,255,255,.7);pointer-events:auto}
 #fire-btn:active{background:rgba(255,60,60,.5);transform:scale(.92)}
@@ -389,16 +391,22 @@ function mbShop(){if(G.state==='playing')openShop();else if(G.state==='shop')clo
 const jBase=document.getElementById('joystick-base');
 const jThumb=document.getElementById('joystick-thumb');
 const jZone=document.getElementById('joystick-zone');
-let joyTouchId=null,joyCenterX=0,joyCenterY=0;
+let joyTouchId=null;
 const JOY_R=50;
+// Fixed center of the joystick (bottom-left area)
+const JOY_CX=30+60, JOY_CY_OFFSET=30+60; // 30px margin + 60px half-size
+
+function getJoyCenter(){
+  const r=jBase.getBoundingClientRect();
+  return{x:r.left+r.width/2, y:r.top+r.height/2};
+}
 
 jZone.addEventListener('touchstart',e=>{
   e.preventDefault();if(joyTouchId!==null)return;
   const t=e.changedTouches[0];joyTouchId=t.identifier;
-  joyCenterX=t.clientX;joyCenterY=t.clientY;
-  jBase.style.display='block';jThumb.style.display='block';
-  jBase.style.left=(joyCenterX-60)+'px';jBase.style.top=(joyCenterY-60)+'px';
-  jThumb.style.left=(joyCenterX-25)+'px';jThumb.style.top=(joyCenterY-25)+'px';
+  const c=getJoyCenter();
+  jBase.classList.add('active');jThumb.classList.add('active');
+  jThumb.style.left=(c.x-25)+'px';jThumb.style.top=(c.y-25)+'px';
   G.joyDx=0;G.joyDy=0;G.joyActive=true;
   if(AC.state==='suspended')AC.resume();
 },{passive:false});
@@ -407,10 +415,11 @@ jZone.addEventListener('touchmove',e=>{
   e.preventDefault();
   for(let t of e.changedTouches){
     if(t.identifier===joyTouchId){
-      let dx=t.clientX-joyCenterX,dy=t.clientY-joyCenterY;
+      const c=getJoyCenter();
+      let dx=t.clientX-c.x,dy=t.clientY-c.y;
       const dist=Math.sqrt(dx*dx+dy*dy);
       if(dist>JOY_R){dx=dx/dist*JOY_R;dy=dy/dist*JOY_R;}
-      jThumb.style.left=(joyCenterX+dx-25)+'px';jThumb.style.top=(joyCenterY+dy-25)+'px';
+      jThumb.style.left=(c.x+dx-25)+'px';jThumb.style.top=(c.y+dy-25)+'px';
       G.joyDx=dx/JOY_R;G.joyDy=dy/JOY_R;
     }
   }
@@ -420,7 +429,9 @@ function joyEnd(e){
   for(let t of e.changedTouches){
     if(t.identifier===joyTouchId){
       joyTouchId=null;G.joyDx=0;G.joyDy=0;G.joyActive=false;
-      jBase.style.display='none';jThumb.style.display='none';
+      jBase.classList.remove('active');jThumb.classList.remove('active');
+      const c=getJoyCenter();
+      jThumb.style.left=(c.x-25)+'px';jThumb.style.top=(c.y-25)+'px';
     }
   }
 }
