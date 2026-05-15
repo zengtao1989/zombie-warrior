@@ -309,7 +309,7 @@ const MAP_THEMES=[
 ];
 
 // ===== GAME STATE =====
-const G={state:'menu',wave:1,maxWave:50,score:0,coins:0,killed:0,
+const G={state:'menu',wave:1,maxWave:50,score:0,coins:50,killed:0,
   xp:0,level:1,xpNeeded:100,
   keys:{},mouse:{x:W/2,y:H/2,down:false},
   cam:{x:0,y:0},shake:{x:0,y:0,t:0,intensity:0},
@@ -368,12 +368,12 @@ const LOOT_TABLE={
 
 // ===== SHOP =====
 const SHOP=[
-  {id:'hp',name:'强化体魄',icon:'❤️',desc:'最大HP+30,恢复30',bc:80,mx:8,lv:0},
-  {id:'spd',name:'疾风之脚',icon:'👟',desc:'移速+0.4',bc:60,mx:5,lv:0},
-  {id:'w1',name:'解锁霰弹枪',icon:'💥',desc:'7发扇形弹幕',bc:150,mx:1,lv:0},
-  {id:'w2',name:'解锁火箭筒',icon:'🚀',desc:'爆炸溅射伤害',bc:300,mx:1,lv:0},
-  {id:'w3',name:'解锁激光炮',icon:'⚡',desc:'穿透光线',bc:500,mx:1,lv:0},
-  {id:'w4',name:'解锁散弹炮',icon:'🔱',desc:'12发爆炸弹幕',bc:800,mx:1,lv:0},
+  {id:'hp',name:'强化体魄',icon:'❤️',desc:'最大HP+30,恢复30',bc:60,mx:8,lv:0},
+  {id:'spd',name:'疾风之脚',icon:'👟',desc:'移速+0.4',bc:50,mx:5,lv:0},
+  {id:'w1',name:'解锁霰弹枪',icon:'💥',desc:'7发扇形弹幕',bc:80,mx:1,lv:0},
+  {id:'w2',name:'解锁火箭筒',icon:'🚀',desc:'爆炸溅射伤害',bc:150,mx:1,lv:0},
+  {id:'w3',name:'解锁激光炮',icon:'⚡',desc:'穿透光线',bc:280,mx:1,lv:0},
+  {id:'w4',name:'解锁散弹炮',icon:'🔱',desc:'12发爆炸弹幕',bc:450,mx:1,lv:0},
   {id:'wdmg',name:'武器强化',icon:'⚔️',desc:'全武器伤害+25%',bc:100,mx:6,lv:0},
   {id:'wbult',name:'弹幕强化',icon:'💫',desc:'全武器子弹数+1',bc:200,mx:4,lv:0},
   {id:'s0',name:'冲击波+',icon:'💥',desc:'范围+伤害+',bc:120,mx:3,lv:0},
@@ -701,10 +701,14 @@ function renderShop(){
   SHOP.forEach(it=>{
     const cost=Math.floor(it.bc*Math.pow(1.5,it.lv));
     const mx=it.lv>=it.mx,cf=G.coins>=cost;
-    const uw=(it.id==='w1'&&WPNS[1].unlocked)||(it.id==='w2'&&WPNS[2].unlocked)||(it.id==='w3'&&WPNS[3].unlocked)||(it.id==='w4'&&WPNS[4].unlocked);
+    // uw: 通过"商店购买"解锁过（lv>=1）才显示已解锁，通过掉落解锁的可再次点击（但buyItem里会再次unlocked）
+    const uw=(it.id==='w1'||it.id==='w2'||it.id==='w3'||it.id==='w4')&&it.lv>=1;
     const dis=mx||!cf||uw;
     const d=document.createElement('div');d.className='si'+(dis?' dis':'');
-    d.innerHTML=`<h3>${it.icon} ${it.name} <span class="lv">Lv${it.lv}/${it.mx===99?'∞':it.mx}</span></h3><p>${it.desc}</p><span class="pr">💰 ${mx?'已满级':uw?'已解锁':cost}</span>`;
+    // 显示状态：优先显示"已解锁"（无论来源），其次满级，再次价格
+    const wpnIdx=it.id==='w1'?1:it.id==='w2'?2:it.id==='w3'?3:it.id==='w4'?4:-1;
+    const alreadyUnlocked=wpnIdx>0&&WPNS[wpnIdx].unlocked;
+    d.innerHTML=`<h3>${it.icon} ${it.name} <span class="lv">Lv${it.lv}/${it.mx===99?'∞':it.mx}</span></h3><p>${it.desc}</p><span class="pr">💰 ${alreadyUnlocked?'✅ 已解锁':mx?'已满级':cost}</span>`;
     if(!dis){d.onclick=()=>buyItem(it.id);d.ontouchstart=(e)=>{e.stopPropagation();buyItem(it.id);};}
     g.appendChild(d);
   });
@@ -954,7 +958,7 @@ function update(now,dt){
         showStory(G.wave);
       }
       G.wave++;updUI();
-      G.coins+=30+G.wave*12;sndWave();announceWave(G.wave);
+      G.coins+=50+G.wave*15;sndWave();announceWave(G.wave);
       if(G.wave%10===1){
         const regionIdx=Math.min(Math.floor((G.wave-1)/10),4);
         genWorld(regionIdx);
