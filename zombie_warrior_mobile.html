@@ -318,7 +318,7 @@ const G={state:'menu',wave:1,maxWave:50,score:0,coins:50,killed:0,
 const WW=3600,WH=3600;
 
 // ===== PLAYER =====
-const P={x:WW/2,y:WH/2,hp:100,mhp:100,spd:3.2,r:18,wpn:0,
+const P={x:WW/2,y:WH/2,hp:300,mhp:300,spd:3.2,r:18,wpn:0,
   inv:0,shield:false,spdBoost:0,angle:0,muzzleFlash:0,walkCycle:0,
   bulletBonus:0,lastMoveDir:{x:0,y:1}};
 
@@ -1453,8 +1453,10 @@ function gameDead(){
     const ov=document.getElementById('overlay');
     ov.querySelector('h1').textContent='💀 你倒下了';
     ov.querySelector('.sub').innerHTML=`得分: ${G.score}  击杀: ${G.killed}<br>到达第 ${G.wave} 波<br>🌹 真相尚未揭开……`;
-    ov.querySelector('button').textContent='重新挑战';
-    ov.querySelector('button').onclick=()=>location.reload();
+    const restartBtn=ov.querySelector('button');
+    restartBtn.textContent='重新挑战';
+    restartBtn.onclick=()=>location.reload();
+    restartBtn.ontouchstart=function(e){e.stopPropagation();location.reload();};
     ov.style.display='flex';
   };
   document.getElementById('sp').style.display='flex';
