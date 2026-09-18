@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>僵尸炮手 3D - Zombie Cannoneer 3D</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0a0a; 
+            overflow: hidden; 
+            font-family: 'Segoe UI', sans-serif;
+        }
+        #gameCanvas { display: block; }
+        #ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #ff6b35;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 100;
+        }
+        #ui div { margin-bottom: 10px; }
+        .health-bar {
+            width: 200px;
+            height: 20px;
+            background: #333;
+            border: 2px solid #ff6b35;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .health-fill {
+            height: 100%;
+            background: linear-gradient(to right, #ff3333, #ff6b35);
+            transition: width 0.3s;
+        }
+        #gameOver {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff0000;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px #ff0000;
+            display: none;
+            text-align: center;
+            z-index: 200;
+        }
+        #gameOver span {
+            display: block;
+            font-size: 24px;
+            margin-top: 20px;
+            color: #ff6b35;
+            cursor: pointer;
+        }
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #888;
+            font-size: 16px;
+            z-index: 100;
+        }
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(255, 107, 53, 0.7);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 50;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 107, 53, 0.7);
+        }
+        #crosshair::before {
+            width: 10px;
+            height: 2px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #crosshair::after {
+            width: 2px;
+            height: 10px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff6b35;
+            font-size: 24px;
+            z-index: 300;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">加载中...</div>
+    <div id="ui">
+        <div>🏆 分数: <span id="score">0</span></div>
+        <div>🌊 波次: <span id="wave">1</span></div>
+        <div>❤️ 生命: 
+            <div class="health-bar">
+                <div class="health-fill" id="healthFill" style="width: 100%"></div>
+            </div>
+        </div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="gameOver">
+        游戏结束
+        <span onclick="restartGame()">点击重新开始</span>
+    </div>
+    <div id="instructions">鼠标移动瞄准 | 点击/空格 开炮 | 消灭僵尸</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game State
+        let gameState = {
+            score: 0,
+            wave: 1,
+            health: 100,
+            zombies: [],
+            bullets: [],
+            particles: [],
+            gameOver: false,
+            waveTimer: 0,
+            zombiesInWave: 0,
+            mouseX: 0,
+            mouseY: 0,
+            cannonAngleH: 0,
+            cannonAngleV: 0,
+            fireTimer: 0
+        };
+
+        // Three.js Setup
+        let scene, camera, renderer;
+        let soldier, cannon, ground, zombies = [];
+        let bullets = [];
+        let particles = [];
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a0a0a);
+            scene.fog = new THREE.Fog(0x1a0a0a, 50, 150);
+
+            // Camera (Third person view)
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 8, 15);
+            camera.lookAt(0, 2, -20);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x331111, 0.5);
+            scene.add(ambientLight);
+
+            // Fire glow from behind
+            const fireLight = new THREE.PointLight(0xff4400, 2, 100);
+            fireLight.position.set(0, 10, -80);
+            scene.add(fireLight);
+
+            // Main directional light
+            const dirLight = new THREE.DirectionalLight(0xff6633, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 100;
+            dirLight.shadow.camera.left = -50;
+            dirLight.shadow.camera.right = 50;
+            dirLight.shadow.camera.top = 50;
+            dirLight.shadow.camera.bottom = -50;
+            scene.add(dirLight);
+
+            // Ground
+            createGround();
+
+            // Soldier
+            createSoldier();
+
+            // Skybox/Distant mountains
+            createEnvironment();
+
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+
+            // Event listeners
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('click', onMouseClick);
+            document.addEventListener('keydown', onKeyDown);
+            window.addEventListener('resize', onWindowResize);
+
+            // Start game loop
+            animate();
+        }
+
+        function createGround() {
+            // Main ground
+            const groundGeo = new THREE.PlaneGeometry(200, 200);
+            const groundMat = new THREE.MeshStandardMaterial({ 
+                color: 0x1a1008,
+                roughness: 0.9,
+                metalness: 0.1
+            });
+            ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Ground details - rocks
+            for (let i = 0; i < 30; i++) {
+                const rockGeo = new THREE.DodecahedronGeometry(Math.random() * 2 + 0.5);
+                const rockMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x3a3a3a,
+                    roughness: 0.8
+                });
+                const rock = new THREE.Mesh(rockGeo, rockMat);
+                rock.position.set(
+                    (Math.random() - 0.5) * 100,
+                    Math.random() * 0.5,
+                    (Math.random() - 0.5) * 100 - 30
+                );
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                scene.add(rock);
+            }
+        }
+
+        function createSoldier() {
+            soldier = new THREE.Group();
+
+            // Body (torso armor)
+            const bodyGeo = new THREE.CylinderGeometry(0.6, 0.7, 1.5, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x5a4030,
+                roughness: 0.6,
+                metalness: 0.3
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 2.5;
+            body.castShadow = true;
+            soldier.add(body);
+
+            // Chest plate
+            const chestGeo = new THREE.BoxGeometry(1, 1, 0.5);
+            const chestMat = new THREE.MeshStandardMaterial({ 
+                color: 0x6a5040,
+                roughness: 0.5,
+                metalness: 0.4
+            });
+            const chest = new THREE.Mesh(chestGeo, chestMat);
+            chest.position.set(0, 2.5, 0.2);
+            chest.castShadow = true;
+            soldier.add(chest);
+
+            // Cape
+            const capeGeo = new THREE.PlaneGeometry(1.5, 2);
+            const capeMat = new THREE.MeshStandardMaterial({ 
+                color: 0x8b0000,
+                side: THREE.DoubleSide,
+                roughness: 0.8
+            });
+            const cape = new THREE.Mesh(capeGeo, capeMat);
+            cape.position.set(0, 2.2, -0.6);
+            cape.rotation.x = 0.2;
+            soldier.add(cape);
+
+            // Head/Helmet
+            const headGeo = new THREE.SphereGeometry(0.5, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ 
+                color: 0x4a4a4a,
+                roughness: 0.4,
+                metalness: 0.6
+            });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 3.8;
+            head.castShadow = true;
+            soldier.add(head);
+
+            // Helmet visor
+            const visorGeo = new THREE.BoxGeometry(0.6, 0.2, 0.3);
+            const visorMat = new THREE.MeshStandardMaterial({ 
+                color: 0x1a1a1a,
+                roughness: 0.2,
+                metalness: 0.8
+            });
+            const visor = new THREE.Mesh(visorGeo, visorMat);
+            visor.position.set(0, 3.75, 0.35);
+            soldier.add(visor);
+
+            // Visor glow (eyes)
+            const eyeLight = new THREE.PointLight(0xff6600, 0.5, 2);
+            eyeLight.position.set(0, 3.75, 0.6);
+            soldier.add(eyeLight);
+
+            // Helmet crest
+            const crestGeo = new THREE.ConeGeometry(0.2, 0.5, 4);
+            const crestMat = new THREE.MeshStandardMaterial({ 
+                color: 0x8b0000,
+                roughness: 0.7
+            });
+            const crest = new THREE.Mesh(crestGeo, crestMat);
+            crest.position.set(0, 4.3, 0);
+            soldier.add(crest);
+
+            // Legs
+            const legGeo = new THREE.CylinderGeometry(0.25, 0.2, 1.5, 8);
+            const legMat = new THREE.MeshStandardMaterial({ 
+                color: 0x4a3a2a,
+                roughness: 0.7
+            });
+            const leftLeg = new THREE.Mesh(legGeo, legMat);
+            leftLeg.position.set(-0.3, 0.75, 0);
+            leftLeg.castShadow = true;
+            soldier.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(legGeo, legMat);
+            rightLeg.position.set(0.3, 0.75, 0);
+            rightLeg.castShadow = true;
+            soldier.add(rightLeg);
+
+            // Cannon base
+            const baseGeo = new THREE.CylinderGeometry(0.5, 0.6, 0.5, 8);
+            const baseMat = new THREE.MeshStandardMaterial({ 
+                color: 0x3a3a3a,
+                roughness: 0.5,
+                metalness: 0.5
+            });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.set(0, 1.8, 0);
+            soldier.add(base);
+
+            // Cannon pivot group
+            cannon = new THREE.Group();
+            cannon.position.set(0, 2.2, 0);
+
+            // Cannon barrel
+            const barrelGeo = new THREE.CylinderGeometry(0.2, 0.25, 3, 8);
+            const barrelMat = new THREE.MeshStandardMaterial({ 
+                color: 0x4a4a4a,
+                roughness: 0.4,
+                metalness: 0.6
+            });
+            const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.z = 1.5;
+            barrel.castShadow = true;
+            cannon.add(barrel);
+
+            // Cannon muzzle
+            const muzzleGeo = new THREE.CylinderGeometry(0.3, 0.2, 0.5, 8);
+            const muzzle = new THREE.Mesh(muzzleGeo, barrelMat);
+            muzzle.rotation.x = Math.PI / 2;
+            muzzle.position.z = 3.2;
+            cannon.add(muzzle);
+
+            // Cannon rings
+            for (let i = 0; i < 3; i++) {
+                const ringGeo = new THREE.TorusGeometry(0.28, 0.05, 8, 16);
+                const ring = new THREE.Mesh(ringGeo, barrelMat);
+                ring.position.z = 0.5 + i * 1;
+                cannon.add(ring);
+            }
+
+            soldier.add(cannon);
+            scene.add(soldier);
+        }
+
+        function createZombie() {
+            const zombie = new THREE.Group();
+            zombie.userData = {
+                health: 1 + Math.floor(gameState.wave / 3),
+                speed: 0.1 + gameState.wave * 0.02 + Math.random() * 0.05,
+                isElite: Math.random() < 0.1 + gameState.wave * 0.02,
+                walkCycle: Math.random() * Math.PI * 2
+            };
+
+            const scale = zombie.userData.isElite ? 1.5 : 0.8 + Math.random() * 0.4;
+            zombie.scale.set(scale, scale, scale);
+
+            // Body
+            const bodyGeo = new THREE.CylinderGeometry(0.4, 0.5, 1.2, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: zombie.userData.isElite ? 0x3a4a5a : 0x4a5a4a,
+                roughness: 0.9
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.8;
+            body.castShadow = true;
+            zombie.add(body);
+
+            // Tattered clothes
+            const clothesGeo = new THREE.ConeGeometry(0.6, 1.5, 8);
+            const clothesMat = new THREE.MeshStandardMaterial({ 
+                color: zombie.userData.isElite ? 0x2a3a4a : 0x3a4a3a,
+                roughness: 1
+            });
+            const clothes = new THREE.Mesh(clothesGeo, clothesMat);
+            clothes.position.y = 1.5;
+            clothes.castShadow = true;
+            zombie.add(clothes);
+
+            // Head
+            const headGeo = new THREE.SphereGeometry(0.4, 12, 12);
+            const headMat = new THREE.MeshStandardMaterial({ 
+                color: 0x5a6a5a,
+                roughness: 0.8
+            });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.8;
+            head.castShadow = true;
+            zombie.add(head);
+
+            // Glowing eyes
+            const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
+            const eyeMat = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000
+            });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.15, 2.85, 0.3);
+            zombie.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.15, 2.85, 0.3);
+            zombie.add(rightEye);
+
+            // Eye glow
+            const eyeLight = new THREE.PointLight(0xff0000, 0.5, 3);
+            eyeLight.position.set(0, 2.85, 0.5);
+            zombie.add(eyeLight);
+
+            // Arms
+            const armGeo = new THREE.CylinderGeometry(0.1, 0.12, 1, 8);
+            const armMat = new THREE.MeshStandardMaterial({ 
+                color: 0x5a6a5a,
+                roughness: 0.9
+            });
+            
+            const leftArm = new THREE.Mesh(armGeo, armMat);
+            leftArm.position.set(-0.6, 2, 0);
+            leftArm.rotation.z = 0.5;
+            leftArm.castShadow = true;
+            zombie.add(leftArm);
+
+            const rightArm = new THREE.Mesh(armGeo, armMat);
+            rightArm.position.set(0.6, 2, 0);
+            rightArm.rotation.z = -0.5;
+            rightArm.castShadow = true;
+            zombie.add(rightArm);
+
+            // Legs
+            const legGeo = new THREE.CylinderGeometry(0.12, 0.1, 1.2, 8);
+            const legMat = new THREE.MeshStandardMaterial({ 
+                color: 0x3a4a3a,
+                roughness: 0.9
+            });
+            
+            const leftLeg = new THREE.Mesh(legGeo, legMat);
+            leftLeg.position.set(-0.2, 0.6, 0);
+            leftLeg.castShadow = true;
+            zombie.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(legGeo, legMat);
+            rightLeg.position.set(0.2, 0.6, 0);
+            rightLeg.castShadow = true;
+            zombie.add(rightLeg);
+
+            // Position zombie
+            zombie.position.set(
+                50,
+                0,
+                -20 - Math.random() * 20
+            );
+
+            scene.add(zombie);
+            zombies.push(zombie);
+        }
+
+        function createEnvironment() {
+            // Distant mountains
+            for (let i = 0; i < 8; i++) {
+                const height = 30 + Math.random() * 40;
+                const mountainGeo = new THREE.ConeGeometry(15 + Math.random() * 10, height, 4);
+                const mountainMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x0d0505,
+                    roughness: 1
+                });
+                const mountain = new THREE.Mesh(mountainGeo, mountainMat);
+                mountain.position.set(
+                    -100 + i * 30 + Math.random() * 10,
+                    height / 2 - 10,
+                    -100
+                );
+                scene.add(mountain);
+            }
+
+            // Fire in the distance
+            const fireGeo = new THREE.ConeGeometry(5, 15, 8);
+            const fireMat = new THREE.MeshBasicMaterial({ 
+                color: 0xff4400,
+                transparent: true,
+                opacity: 0.6
+            });
+            const fire = new THREE.Mesh(fireGeo, fireMat);
+            fire.position.set(0, 5, -90);
+            scene.add(fire);
+
+            // Fire glow
+            const fireLight = new THREE.PointLight(0xff4400, 3, 50);
+            fireLight.position.set(0, 10, -80);
+            scene.add(fireLight);
+        }
+
+        function createBullet() {
+            const bullet = new THREE.Group();
+
+            // Bullet core
+            const coreGeo = new THREE.SphereGeometry(0.2, 8, 8);
+            const coreMat = new THREE.MeshBasicMaterial({ 
+                color: 0xffaa00
+            });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            bullet.add(core);
+
+            // Glow
+            const glowGeo = new THREE.SphereGeometry(0.4, 8, 8);
+            const glowMat = new THREE.MeshBasicMaterial({ 
+                color: 0xff6600,
+                transparent: true,
+                opacity: 0.5
+            });
+            const glow = new THREE.Mesh(glowGeo, glowMat);
+            bullet.add(glow);
+
+            // Light
+            const light = new THREE.PointLight(0xff6600, 1, 5);
+            bullet.add(light);
+
+            // Position at cannon muzzle
+            const muzzlePos = new THREE.Vector3(0, 0, 3.5);
+            muzzlePos.applyQuaternion(cannon.quaternion);
+            muzzlePos.add(cannon.position);
+            bullet.position.copy(muzzlePos);
+
+            // Direction
+            const direction = new THREE.Vector3(0, 0, 1);
+            direction.applyQuaternion(cannon.quaternion);
+
+            bullet.userData = {
+                velocity: direction.multiplyScalar(2),
+                life: 100
+            };
+
+            scene.add(bullet);
+            bullets.push(bullet);
+        }
+
+        function createExplosion(position, isZombie = false) {
+            const particleCount = isZombie ? 40 : 20;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const geo = new THREE.SphereGeometry(0.1 + Math.random() * 0.2, 8, 8);
+                const mat = new THREE.MeshBasicMaterial({ 
+                    color: isZombie ? 
+                        (Math.random() > 0.5 ? 0x00ff00 : 0x88ff00) : 
+                        (Math.random() > 0.3 ? 0xff6600 : 0xffaa00),
+                    transparent: true
+                });
+                const particle = new THREE.Mesh(geo, mat);
+                particle.position.copy(position);
+                particle.userData = {
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.5,
+                        Math.random() * 0.5,
+                        (Math.random() - 0.5) * 0.5
+                    ),
+                    life: 1
+                };
+                scene.add(particle);
+                particles.push(particle);
+            }
+        }
+
+        function onMouseMove(event) {
+            gameState.mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            gameState.mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Rotate cannon based on mouse position
+            gameState.cannonAngleH = -gameState.mouseX * Math.PI / 4;
+            gameState.cannonAngleV = -gameState.mouseY * Math.PI / 6;
+
+            if (cannon) {
+                cannon.rotation.y = gameState.cannonAngleH;
+                cannon.rotation.x = Math.max(-0.3, Math.min(0.5, gameState.cannonAngleV));
+            }
+        }
+
+        function onMouseClick(event) {
+            if (gameState.gameOver) return;
+            fireCannon();
+        }
+
+        function onKeyDown(event) {
+            if (event.code === 'Space') {
+                event.preventDefault();
+                if (gameState.gameOver) {
+                    restartGame();
+                } else {
+                    fireCannon();
+                }
+            }
+        }
+
+        function fireCannon() {
+            if (gameState.fireTimer > 0) return;
+            gameState.fireTimer = 20;
+            createBullet();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function updateGame() {
+            if (gameState.gameOver) return;
+
+            // Fire timer
+            if (gameState.fireTimer > 0) gameState.fireTimer--;
+
+            // Spawn zombies
+            gameState.waveTimer++;
+            if (gameState.waveTimer >= 120 - gameState.wave * 8) {
+                if (zombies.length < 10 + gameState.wave * 2) {
+                    createZombie();
+                    gameState.zombiesInWave++;
+                }
+                if (gameState.zombiesInWave >= 8 + gameState.wave * 3) {
+                    gameState.wave++;
+                    gameState.zombiesInWave = 0;
+                    gameState.waveTimer = 0;
+                    document.getElementById('wave').textContent = gameState.wave;
+                }
+            }
+
+            // Update zombies
+            for (let i = zombies.length - 1; i >= 0; i--) {
+                const zombie = zombies[i];
+                zombie.userData.walkCycle += 0.1;
+                
+                // Walk animation
+                zombie.position.x -= zombie.userData.speed;
+                zombie.children.forEach((child, idx) => {
+                    if (idx === 4 || idx === 5) { // Legs
+                        child.rotation.x = Math.sin(zombie.userData.walkCycle) * 0.3;
+                    }
+                    if (idx === 2 || idx === 3) { // Arms
+                        child.rotation.x = Math.sin(zombie.userData.walkCycle + 1) * 0.2;
+                    }
+                });
+
+                // Reached player
+                if (zombie.position.x < 5) {
+                    scene.remove(zombie);
+                    zombies.splice(i, 1);
+                    gameState.health -= 10 * (zombie.userData.isElite ? 2 : 1);
+                    document.getElementById('healthFill').style.width = Math.max(0, gameState.health) + '%';
+                    
+                    if (gameState.health <= 0) {
+                        gameState.gameOver = true;
+                        document.getElementById('gameOver').style.display = 'block';
+                    }
+                }
+            }
+
+            // Update bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.position.add(bullet.userData.velocity);
+                bullet.userData.life--;
+
+                // Check zombie collision
+                for (let j = zombies.length - 1; j >= 0; j--) {
+                    const zombie = zombies[j];
+                    const dist = bullet.position.distanceTo(zombie.position.clone().add(new THREE.Vector3(0, 2, 0)));
+                    
+                    if (dist < 2 * zombie.scale.x) {
+                        zombie.userData.health--;
+                        createExplosion(bullet.position, false);
+                        
+                        if (zombie.userData.health <= 0) {
+                            createExplosion(zombie.position, true);
+                            scene.remove(zombie);
+                            zombies.splice(j, 1);
+                            gameState.score += zombie.userData.isElite ? 50 : 10;
+                            document.getElementById('score').textContent = gameState.score;
+                        }
+                        
+                        scene.remove(bullet);
+                        bullets.splice(i, 1);
+                        break;
+                    }
+                }
+
+                // Remove if out of bounds or life ended
+                if (bullets[i] && (bullet.userData.life <= 0 || bullet.position.z < -100 || bullet.position.z > 20)) {
+                    scene.remove(bullet);
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const particle = particles[i];
+                particle.position.add(particle.userData.velocity);
+                particle.userData.velocity.y -= 0.02; // Gravity
+                particle.userData.life -= 0.03;
+                particle.material.opacity = particle.userData.life;
+                particle.scale.setScalar(particle.userData.life);
+
+                if (particle.userData.life <= 0) {
+                    scene.remove(particle);
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateGame();
+            renderer.render(scene, camera);
+        }
+
+        function restartGame() {
+            // Clear zombies
+            zombies.forEach(z => scene.remove(z));
+            zombies = [];
+            
+            // Clear bullets
+            bullets.forEach(b => scene.remove(b));
+            bullets = [];
+            
+            // Clear particles
+            particles.forEach(p => scene.remove(p));
+            particles = [];
+
+            // Reset state
+            gameState = {
+                score: 0,
+                wave: 1,
+                health: 100,
+                zombies: [],
+                bullets: [],
+                particles: [],
+                gameOver: false,
+                waveTimer: 0,
+                zombiesInWave: 0,
+                mouseX: 0,
+                mouseY: 0,
+                cannonAngleH: 0,
+                cannonAngleV: 0,
+                fireTimer: 0
+            };
+
+            document.getElementById('score').textContent = '0';
+            document.getElementById('wave').textContent = '1';
+            document.getElementById('healthFill').style.width = '100%';
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

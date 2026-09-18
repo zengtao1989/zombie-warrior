@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>僵尸炮手 - Zombie Cannoneer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            border: 4px solid #4a2c0a;
+            box-shadow: 0 0 50px rgba(255, 100, 0, 0.3);
+        }
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: #ff6b35;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        #ui div {
+            margin-bottom: 8px;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff3333;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+            display: none;
+            text-align: center;
+            z-index: 20;
+        }
+        #gameOver span {
+            display: block;
+            font-size: 24px;
+            margin-top: 20px;
+            color: #ff6b35;
+            cursor: pointer;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            color: #888;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        .health-bar {
+            width: 150px;
+            height: 20px;
+            background: #333;
+            border: 2px solid #ff6b35;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .health-fill {
+            height: 100%;
+            background: linear-gradient(to right, #ff3333, #ff6b35);
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1000" height="600"></canvas>
+        <div id="ui">
+            <div>🏆 分数: <span id="score">0</span></div>
+            <div>🌊 波次: <span id="wave">1</span></div>
+            <div>❤️ 生命: 
+                <div class="health-bar">
+                    <div class="health-fill" id="healthFill" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+        <div id="gameOver">
+            游戏结束
+            <span onclick="restartGame()">点击重新开始</span>
+        </div>
+        <div id="instructions">鼠标瞄准 | 左键发射 | 空格键快速开炮</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Game state
+        let gameState = {
+            score: 0,
+            wave: 1,
+            health: 100,
+            zombies: [],
+            bullets: [],
+            particles: [],
+            cannonAngle: 0,
+            cannonX: 100,
+            cannonY: H - 120,
+            isFiring: false,
+            fireTimer: 0,
+            gameOver: false,
+            waveTimer: 0,
+            zombiesInWave: 0,
+            zombiesKilled: 0
+        };
+
+        // Background gradient
+        function drawBackground() {
+            // Sky gradient - dark orange/red like the AI image
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+            skyGrad.addColorStop(0, '#1a0a0a');
+            skyGrad.addColorStop(0.3, '#2d1a1a');
+            skyGrad.addColorStop(0.6, '#3d2020');
+            skyGrad.addColorStop(1, '#1a0808');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, H);
+
+            // Distant mountains silhouette
+            ctx.fillStyle = '#0d0505';
+            ctx.beginPath();
+            ctx.moveTo(0, H - 150);
+            ctx.lineTo(150, H - 250);
+            ctx.lineTo(300, H - 180);
+            ctx.lineTo(450, H - 300);
+            ctx.lineTo(600, H - 200);
+            ctx.lineTo(750, H - 280);
+            ctx.lineTo(900, H - 220);
+            ctx.lineTo(W, H - 180);
+            ctx.lineTo(W, H);
+            ctx.lineTo(0, H);
+            ctx.closePath();
+            ctx.fill();
+
+            // Ground
+            const groundGrad = ctx.createLinearGradient(0, H - 100, 0, H);
+            groundGrad.addColorStop(0, '#1a1008');
+            groundGrad.addColorStop(1, '#0d0805');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, H - 100, W, 100);
+
+            // Ground texture lines
+            ctx.strokeStyle = '#2a1a0a';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 20; i++) {
+                ctx.beginPath();
+                ctx.moveTo(Math.random() * W, H - 100 + Math.random() * 100);
+                ctx.lineTo(Math.random() * W, H - 100 + Math.random() * 100);
+                ctx.stroke();
+            }
+
+            // Fire glow in distance
+            const fireGlow = ctx.createRadialGradient(W - 100, H - 200, 0, W - 100, H - 200, 200);
+            fireGlow.addColorStop(0, 'rgba(255, 100, 0, 0.3)');
+            fireGlow.addColorStop(0.5, 'rgba(255, 50, 0, 0.1)');
+            fireGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            ctx.fillStyle = fireGlow;
+            ctx.fillRect(W - 300, H - 400, 300, 400);
+
+            // Ember particles in background
+            for (let i = 0; i < 15; i++) {
+                const x = W - 200 + Math.random() * 200;
+                const y = H - 300 + Math.random() * 200;
+                const size = 1 + Math.random() * 2;
+                ctx.fillStyle = `rgba(255, ${100 + Math.random() * 100}, 0, ${0.3 + Math.random() * 0.4})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Draw cannon base/platform
+        function drawPlatform() {
+            // Wooden platform
+            ctx.fillStyle = '#3d2817';
+            ctx.fillRect(20, H - 80, 180, 30);
+            
+            // Platform details
+            ctx.fillStyle = '#2d1a0f';
+            for (let i = 0; i < 8; i++) {
+                ctx.fillRect(30 + i * 20, H - 78, 15, 26);
+            }
+
+            // Stone base
+            ctx.fillStyle = '#4a4a4a';
+            ctx.beginPath();
+            ctx.moveTo(0, H);
+            ctx.lineTo(50, H - 60);
+            ctx.lineTo(150, H - 60);
+            ctx.lineTo(200, H);
+            ctx.closePath();
+            ctx.fill();
+
+            // Stone texture
+            ctx.fillStyle = '#3a3a3a';
+            ctx.beginPath();
+            ctx.arc(60, H - 35, 15, 0, Math.PI * 2);
+            ctx.arc(100, H - 40, 12, 0, Math.PI * 2);
+            ctx.arc(140, H - 35, 14, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Draw soldier character (based on AI image style)
+        function drawSoldier() {
+            const x = 80;
+            const y = H - 130;
+            
+            // Glow effect around soldier
+            const glowGrad = ctx.createRadialGradient(x, y, 0, x, y, 80);
+            glowGrad.addColorStop(0, 'rgba(255, 100, 0, 0.2)');
+            glowGrad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+            ctx.fillStyle = glowGrad;
+            ctx.beginPath();
+            ctx.arc(x, y, 80, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Body shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(x + 5, H - 85, 35, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Legs (armored)
+            ctx.fillStyle = '#4a3a2a';
+            ctx.fillRect(x - 18, y + 50, 14, 35);
+            ctx.fillRect(x + 4, y + 50, 14, 35);
+            
+            // Leg armor details
+            ctx.fillStyle = '#5a4a3a';
+            ctx.fillRect(x - 18, y + 55, 14, 8);
+            ctx.fillRect(x + 4, y + 55, 14, 8);
+
+            // Boots
+            ctx.fillStyle = '#2a1a0a';
+            ctx.fillRect(x - 20, y + 80, 18, 10);
+            ctx.fillRect(x + 2, y + 80, 18, 10);
+
+            // Torso (armor)
+            ctx.fillStyle = '#5a4030';
+            ctx.beginPath();
+            ctx.moveTo(x - 25, y + 10);
+            ctx.lineTo(x + 25, y + 10);
+            ctx.lineTo(x + 20, y + 55);
+            ctx.lineTo(x - 20, y + 55);
+            ctx.closePath();
+            ctx.fill();
+
+            // Armor chest plate
+            ctx.fillStyle = '#6a5040';
+            ctx.beginPath();
+            ctx.moveTo(x - 18, y + 15);
+            ctx.lineTo(x + 18, y + 15);
+            ctx.lineTo(x + 15, y + 45);
+            ctx.lineTo(x - 15, y + 45);
+            ctx.closePath();
+            ctx.fill();
+
+            // Armor rivets
+            ctx.fillStyle = '#8a7060';
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.arc(x - 10 + i * 10, y + 25, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Cape
+            ctx.fillStyle = '#8b0000';
+            ctx.beginPath();
+            ctx.moveTo(x - 20, y + 15);
+            ctx.quadraticCurveTo(x - 40, y + 60, x - 30, y + 90);
+            ctx.lineTo(x - 15, y + 50);
+            ctx.closePath();
+            ctx.fill();
+
+            // Belt
+            ctx.fillStyle = '#3a2a1a';
+            ctx.fillRect(x - 22, y + 48, 44, 8);
+            ctx.fillStyle = '#8a6a3a';
+            ctx.fillRect(x - 5, y + 46, 10, 12);
+
+            // Arms
+            ctx.fillStyle = '#5a4030';
+            // Back arm
+            ctx.fillRect(x - 35, y + 15, 12, 35);
+            // Front arm holding cannon
+            ctx.save();
+            ctx.translate(x + 15, y + 25);
+            ctx.rotate(gameState.cannonAngle);
+            ctx.fillRect(0, -6, 45, 12);
+            ctx.restore();
+
+            // Hands/gloves
+            ctx.fillStyle = '#4a3a2a';
+            ctx.fillRect(x - 38, y + 45, 15, 12);
+            ctx.save();
+            ctx.translate(x + 15, y + 25);
+            ctx.rotate(gameState.cannonAngle);
+            ctx.fillRect(40, -8, 15, 12);
+            ctx.restore();
+
+            // Cannon
+            ctx.save();
+            ctx.translate(x + 15, y + 25);
+            ctx.rotate(gameState.cannonAngle);
+            
+            // Cannon barrel
+            const barrelGrad = ctx.createLinearGradient(0, -15, 0, 15);
+            barrelGrad.addColorStop(0, '#5a5a5a');
+            barrelGrad.addColorStop(0.5, '#3a3a3a');
+            barrelGrad.addColorStop(1, '#2a2a2a');
+            ctx.fillStyle = barrelGrad;
+            ctx.fillRect(15, -12, 70, 24);
+            
+            // Cannon details
+            ctx.fillStyle = '#4a4a4a';
+            ctx.fillRect(25, -14, 8, 28);
+            ctx.fillRect(50, -14, 8, 28);
+            ctx.fillRect(75, -14, 8, 28);
+
+            // Cannon opening
+            ctx.fillStyle = '#1a1a1a';
+            ctx.beginPath();
+            ctx.arc(85, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Fire effect when firing
+            if (gameState.fireTimer > 0) {
+                const fireGrad = ctx.createRadialGradient(90, 0, 0, 90, 0, 40);
+                fireGrad.addColorStop(0, 'rgba(255, 255, 200, 0.9)');
+                fireGrad.addColorStop(0.3, 'rgba(255, 150, 50, 0.7)');
+                fireGrad.addColorStop(0.6, 'rgba(255, 80, 0, 0.4)');
+                fireGrad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+                ctx.fillStyle = fireGrad;
+                ctx.beginPath();
+                ctx.arc(90, 0, 40 + Math.random() * 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.restore();
+
+            // Head/Helmet
+            ctx.fillStyle = '#4a4a4a';
+            ctx.beginPath();
+            ctx.arc(x, y - 5, 22, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Helmet details
+            ctx.fillStyle = '#5a5a5a';
+            ctx.beginPath();
+            ctx.arc(x, y - 8, 20, Math.PI, 0);
+            ctx.fill();
+
+            // Helmet visor
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(x - 12, y - 10, 24, 10);
+
+            // Visor glow (eyes)
+            ctx.fillStyle = '#ff6600';
+            ctx.fillRect(x - 8, y - 8, 6, 4);
+            ctx.fillRect(x + 2, y - 8, 6, 4);
+
+            // Helmet crest
+            ctx.fillStyle = '#8b0000';
+            ctx.beginPath();
+            ctx.moveTo(x, y - 30);
+            ctx.lineTo(x - 8, y - 15);
+            ctx.lineTo(x + 8, y - 15);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Draw zombie
+        function drawZombie(zombie) {
+            const x = zombie.x;
+            const y = zombie.y;
+            const scale = zombie.scale || 1;
+            const offsetX = Math.sin(zombie.walkCycle * 8) * 3;
+            const armSwing = Math.sin(zombie.walkCycle * 8) * 15;
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.beginPath();
+            ctx.ellipse(0, 55, 20, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Legs
+            ctx.fillStyle = '#3a4a3a';
+            const legOffset = Math.sin(zombie.walkCycle * 8) * 8;
+            ctx.fillRect(-12 + legOffset, 20, 10, 35);
+            ctx.fillRect(2 - legOffset, 20, 10, 35);
+
+            // Body (tattered)
+            ctx.fillStyle = '#4a5a4a';
+            ctx.beginPath();
+            ctx.moveTo(-18, -10);
+            ctx.lineTo(18, -10);
+            ctx.lineTo(15, 25);
+            ctx.lineTo(-15, 25);
+            ctx.closePath();
+            ctx.fill();
+
+            // Tattered edges
+            ctx.fillStyle = '#3a4a3a';
+            for (let i = 0; i < 5; i++) {
+                ctx.fillRect(-15 + i * 6, 22, 8, 5 + Math.random() * 5);
+            }
+
+            // Arms
+            ctx.fillStyle = '#5a6a5a';
+            // Left arm reaching forward
+            ctx.save();
+            ctx.translate(-15, 0);
+            ctx.rotate((-30 + armSwing) * Math.PI / 180);
+            ctx.fillRect(0, -5, 35, 10);
+            // Claws
+            ctx.fillStyle = '#3a3a3a';
+            ctx.fillRect(32, -7, 8, 4);
+            ctx.fillRect(32, -1, 8, 4);
+            ctx.fillRect(32, 5, 6, 3);
+            ctx.restore();
+
+            // Right arm
+            ctx.fillStyle = '#5a6a5a';
+            ctx.save();
+            ctx.translate(15, 0);
+            ctx.rotate((30 - armSwing) * Math.PI / 180);
+            ctx.fillRect(-35, -5, 35, 10);
+            ctx.restore();
+
+            // Head
+            ctx.fillStyle = '#5a6a5a';
+            ctx.beginPath();
+            ctx.arc(0, -25, 18, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Skull cracks
+            ctx.strokeStyle = '#3a3a3a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-5, -35);
+            ctx.lineTo(-8, -20);
+            ctx.moveTo(8, -30);
+            ctx.lineTo(5, -18);
+            ctx.stroke();
+
+            // Glowing eyes
+            const eyeGlow = ctx.createRadialGradient(-7, -28, 0, -7, -28, 8);
+            eyeGlow.addColorStop(0, '#ff0000');
+            eyeGlow.addColorStop(0.5, 'rgba(255, 0, 0, 0.5)');
+            eyeGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            ctx.fillStyle = eyeGlow;
+            ctx.beginPath();
+            ctx.arc(-7, -28, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#ff3300';
+            ctx.beginPath();
+            ctx.arc(-7, -28, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            const eyeGlow2 = ctx.createRadialGradient(7, -28, 0, 7, -28, 8);
+            eyeGlow2.addColorStop(0, '#ff0000');
+            eyeGlow2.addColorStop(0.5, 'rgba(255, 0, 0, 0.5)');
+            eyeGlow2.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            ctx.fillStyle = eyeGlow2;
+            ctx.beginPath();
+            ctx.arc(7, -28, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#ff3300';
+            ctx.beginPath();
+            ctx.arc(7, -28, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Mouth
+            ctx.fillStyle = '#2a2a2a';
+            ctx.beginPath();
+            ctx.ellipse(0, -15, 8, 5, 0, 0, Math.PI);
+            ctx.fill();
+
+            // Teeth
+            ctx.fillStyle = '#8a8a7a';
+            for (let i = 0; i < 4; i++) {
+                ctx.fillRect(-6 + i * 4, -15, 3, 4);
+            }
+
+            ctx.restore();
+        }
+
+        // Draw bullet
+        function drawBullet(bullet) {
+            // Bullet glow
+            const glow = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 20);
+            glow.addColorStop(0, 'rgba(255, 200, 100, 0.8)');
+            glow.addColorStop(0.5, 'rgba(255, 100, 0, 0.4)');
+            glow.addColorStop(1, 'rgba(255, 50, 0, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(bullet.x, bullet.y, 20, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bullet core
+            const bulletGrad = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 8);
+            bulletGrad.addColorStop(0, '#ffff00');
+            bulletGrad.addColorStop(0.5, '#ff8800');
+            bulletGrad.addColorStop(1, '#ff4400');
+            ctx.fillStyle = bulletGrad;
+            ctx.beginPath();
+            ctx.arc(bullet.x, bullet.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Trail
+            ctx.strokeStyle = 'rgba(255, 150, 50, 0.5)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(bullet.x, bullet.y);
+            ctx.lineTo(bullet.x - bullet.vx * 3, bullet.y - bullet.vy * 3);
+            ctx.stroke();
+        }
+
+        // Draw explosion particles
+        function drawParticles() {
+            gameState.particles.forEach((p, i) => {
+                p.life -= 0.02;
+                if (p.life <= 0) {
+                    gameState.particles.splice(i, 1);
+                    return;
+                }
+                
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1; // gravity
+
+                const alpha = p.life;
+                ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Create explosion
+        function createExplosion(x, y) {
+            for (let i = 0; i < 30; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                const isFire = Math.random() > 0.3;
+                gameState.particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2,
+                    size: 5 + Math.random() * 10,
+                    life: 1,
+                    r: isFire ? 255 : 200,
+                    g: isFire ? Math.floor(Math.random() * 150) : 100,
+                    b: 0
+                });
+            }
+            // Smoke
+            for (let i = 0; i < 10; i++) {
+                gameState.particles.push({
+                    x: x + (Math.random() - 0.5) * 20,
+                    y: y + (Math.random() - 0.5) * 20,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: -1 - Math.random() * 2,
+                    size: 15 + Math.random() * 15,
+                    life: 1,
+                    r: 80,
+                    g: 80,
+                    b: 80
+                });
+            }
+        }
+
+        // Fire cannon
+        function fireCannon() {
+            if (gameState.fireTimer > 0 || gameState.gameOver) return;
+            
+            gameState.fireTimer = 15;
+            gameState.isFiring = true;
+            
+            const speed = 15;
+            gameState.bullets.push({
+                x: gameState.cannonX + 100 * Math.cos(gameState.cannonAngle),
+                y: gameState.cannonY - 100 * Math.sin(gameState.cannonAngle),
+                vx: Math.cos(gameState.cannonAngle) * speed,
+                vy: -Math.sin(gameState.cannonAngle) * speed
+            });
+        }
+
+        // Spawn zombie
+        function spawnZombie() {
+            const baseSpeed = 0.5 + gameState.wave * 0.1;
+            gameState.zombies.push({
+                x: W + 50,
+                y: H - 100 + (Math.random() - 0.5) * 30,
+                speed: baseSpeed + Math.random() * 0.5,
+                health: 1 + Math.floor(gameState.wave / 3),
+                scale: 0.8 + Math.random() * 0.4,
+                walkCycle: Math.random() * Math.PI * 2,
+                isElite: Math.random() < 0.1 + gameState.wave * 0.02
+            });
+        }
+
+        // Update game
+        function update() {
+            if (gameState.gameOver) return;
+
+            // Fire timer
+            if (gameState.fireTimer > 0) {
+                gameState.fireTimer--;
+            }
+
+            // Wave management
+            gameState.waveTimer++;
+            if (gameState.waveTimer >= 180 - gameState.wave * 10) {
+                if (gameState.zombies.length < 8 + gameState.wave * 2) {
+                    spawnZombie();
+                    gameState.zombiesInWave++;
+                }
+                if (gameState.zombiesInWave >= 10 + gameState.wave * 3) {
+                    gameState.wave++;
+                    gameState.zombiesInWave = 0;
+                    gameState.waveTimer = 0;
+                    document.getElementById('wave').textContent = gameState.wave;
+                }
+            }
+
+            // Update zombies
+            gameState.zombies.forEach((zombie, i) => {
+                zombie.x -= zombie.speed;
+                zombie.walkCycle += 0.05;
+                
+                // Check if reached left side
+                if (zombie.x < 50) {
+                    gameState.zombies.splice(i, 1);
+                    gameState.health -= 10 * (zombie.isElite ? 2 : 1);
+                    document.getElementById('healthFill').style.width = Math.max(0, gameState.health) + '%';
+                    
+                    if (gameState.health <= 0) {
+                        gameState.gameOver = true;
+                        document.getElementById('gameOver').style.display = 'block';
+                    }
+                }
+            });
+
+            // Update bullets
+            gameState.bullets.forEach((bullet, i) => {
+                bullet.x += bullet.vx;
+                bullet.y += bullet.vy;
+
+                // Check bounds
+                if (bullet.x > W + 50 || bullet.x < -50 || bullet.y < -50 || bullet.y > H + 50) {
+                    gameState.bullets.splice(i, 1);
+                    return;
+                }
+
+                // Check collision with zombies
+                gameState.zombies.forEach((zombie, j) => {
+                    const dist = Math.sqrt((bullet.x - zombie.x) ** 2 + (bullet.y - zombie.y + 20) ** 2);
+                    if (dist < 40 * zombie.scale) {
+                        zombie.health--;
+                        createExplosion(bullet.x, bullet.y);
+                        gameState.bullets.splice(i, 1);
+                        
+                        if (zombie.health <= 0) {
+                            createExplosion(zombie.x, zombie.y);
+                            gameState.zombies.splice(j, 1);
+                            gameState.score += zombie.isElite ? 50 : 10;
+                            gameState.zombiesKilled++;
+                            document.getElementById('score').textContent = gameState.score;
+                        }
+                    }
+                });
+            });
+
+            // Update particles
+            drawParticles();
+        }
+
+        // Main draw
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            drawBackground();
+            drawPlatform();
+            
+            // Draw zombies
+            gameState.zombies.forEach(zombie => drawZombie(zombie));
+            
+            // Draw bullets
+            gameState.bullets.forEach(bullet => drawBullet(bullet));
+            
+            // Draw soldier
+            drawSoldier();
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Mouse control
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            const dx = mx - gameState.cannonX;
+            const dy = my - gameState.cannonY;
+            let angle = Math.atan2(-dy, dx);
+            
+            // Limit angle
+            angle = Math.max(-Math.PI / 2, Math.min(0, angle));
+            gameState.cannonAngle = angle;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                fireCannon();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                fireCannon();
+            }
+        });
+
+        // Restart game
+        function restartGame() {
+            gameState = {
+                score: 0,
+                wave: 1,
+                health: 100,
+                zombies: [],
+                bullets: [],
+                particles: [],
+                cannonAngle: 0,
+                cannonX: 100,
+                cannonY: H - 120,
+                isFiring: false,
+                fireTimer: 0,
+                gameOver: false,
+                waveTimer: 0,
+                zombiesInWave: 0,
+                zombiesKilled: 0
+            };
+            document.getElementById('score').textContent = '0';
+            document.getElementById('wave').textContent = '1';
+            document.getElementById('healthFill').style.width = '100%';
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        // Start game
+        gameLoop();
+    </script>
+</body>
+</html>

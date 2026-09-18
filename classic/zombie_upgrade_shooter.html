@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>僵尸枪战 - 武器升级版</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Microsoft YaHei','SimHei',sans-serif;user-select:none}
+canvas{display:block;cursor:crosshair}
+
+/* 商店遮罩 */
+#shop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:100;overflow-y:auto}
+#shop.active{display:block}
+#shop .inner{max-width:800px;margin:0 auto;padding:30px 20px;color:#fff}
+#shop h1{font-size:28px;color:#ffd700;text-align:center;margin-bottom:4px;text-shadow:0 0 12px #ffd700}
+#shop .coins-bar{text-align:center;font-size:18px;color:#ffec80;margin-bottom:20px}
+#shopClose{position:fixed;top:14px;right:24px;font-size:34px;color:#fff;cursor:pointer;z-index:101}
+#shopClose:hover{color:#ffd700}
+
+.tab-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;justify-content:center}
+.tab-bar .tab{padding:8px 18px;border-radius:20px;cursor:pointer;border:2px solid #555;color:#ccc;background:#111;font-size:14px;transition:all .2s}
+.tab-bar .tab.active{border-color:#ffd700;color:#ffd700;background:#2a1f00}
+.tab-bar .tab.locked{opacity:.35;cursor:not-allowed}
+
+.upgrade-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.card{background:linear-gradient(135deg,#1a1a2e,#16213e);border:2px solid #333;border-radius:12px;padding:14px;cursor:pointer;transition:all .2s}
+.card:hover{border-color:#ffd700;transform:translateY(-2px);box-shadow:0 4px 20px rgba(255,215,0,.15)}
+.card.maxed{border-color:#4caf50;opacity:.7;cursor:default}
+.card.maxed:hover{transform:none;box-shadow:none}
+.card .card-icon{font-size:26px;margin-bottom:4px}
+.card .card-name{font-size:15px;color:#fff;margin-bottom:2px}
+.card .card-lv{font-size:12px;color:#ffd700;margin-bottom:6px}
+.card .card-desc{font-size:11px;color:#aaa;margin-bottom:8px;line-height:1.4}
+.card .card-cost{display:inline-block;background:#ffd700;color:#000;font-weight:bold;padding:3px 10px;border-radius:12px;font-size:13px}
+.card.maxed .card-cost{background:#4caf50}
+
+/* HUD */
+#hud-hp{position:fixed;top:20px;left:20px;z-index:50}
+#hud-wave{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:50;color:#ffd700;font-size:18px;font-weight:bold}
+#hud-weapons{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:50;display:flex;gap:6px}
+.w-btn{width:52px;height:52px;border-radius:10px;border:2px solid #555;background:rgba(0,0,0,.7);color:#fff;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:default;position:relative;transition:all .2s}
+.w-btn.active{border-color:#ffd700;background:rgba(255,215,0,.15)}
+.w-btn.locked{opacity:.35}
+.w-btn .w-icon{font-size:20px}
+.w-btn .w-key{position:absolute;top:2px;right:4px;font-size:9px;color:#888}
+.w-btn .w-lv{position:absolute;top:2px;left:4px;font-size:9px;color:#ffd700}
+
+#hud-coins{position:fixed;top:20px;right:20px;z-index:50;color:#ffd700;font-size:18px;font-weight:bold}
+#hud-ammo{position:fixed;bottom:76px;right:24px;z-index:50;color:#fff;font-size:14px;text-align:right}
+#hud-reload{position:fixed;bottom:76px;right:24px;z-index:50;color:#ffd700;font-size:13px;display:none}
+
+#killMsg{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:50;color:#ffd700;font-size:17px;font-weight:bold;opacity:0;transition:opacity .3s}
+#killMsg.show{opacity:1}
+
+#gameOver{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;flex-direction:column;align-items:center;justify-content:center;color:#fff}
+#gameOver.active{display:flex}
+#gameOver h1{font-size:52px;color:#ff4444;text-shadow:0 0 20px #ff0000;margin-bottom:10px}
+#gameOver .go-stat{font-size:18px;color:#ccc;margin-bottom:6px}
+#gameOver button{padding:12px 40px;font-size:20px;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;border:none;border-radius:12px;cursor:pointer;font-weight:bold;margin-top:20px}
+</style>
+</head>
+<body>
+
+<canvas id="gc"></canvas>
+
+<!-- HUD -->
+<div id="hud-coins">💰 0</div>
+<div id="hud-hp">
+  <div style="width:220px;height:22px;background:#333;border:2px solid #fff;border-radius:3px;overflow:hidden">
+    <div id="hpBar" style="height:100%;background:#4caf50;transition:width .2s"></div>
+  </div>
+  <div id="hpText" style="color:#fff;font-size:13px;margin-top:2px">❤️ 100/100</div>
+</div>
+<div id="hud-wave">第 1 波</div>
+<div id="hud-weapons"></div>
+<div id="hud-ammo"></div>
+<div id="hud-reload" style="display:none">换弹中...</div>
+<div id="killMsg"></div>
+
+<!-- 商店 -->
+<div id="shop">
+  <span id="shopClose" onclick="toggleShop()">&times;</span>
+  <div class="inner">
+    <h1>⚔️ 武器升级商店</h1>
+    <div class="coins-bar">💰 金币：<span id="shopCoins">0</span></div>
+    <div class="tab-bar" id="shopTabs"></div>
+    <div id="shopUpgrades"></div>
+  </div>
+</div>
+
+<!-- 游戏结束 -->
+<div id="gameOver">
+  <h1>GAME OVER</h1>
+  <div class="go-stat">波次：<span id="goWave">0</span></div>
+  <div class="go-stat" style="color:#ffd700">击杀：<span id="goKills">0</span></div>
+  <div class="go-stat" style="color:#ffec80">金币：<span id="goCoins">0</span></div>
+  <button onclick="location.reload()">重新开始</button>
+</div>
+
+<script>
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+let W,H;
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight}
+resize();
+addEventListener('resize',resize);
+
+// ========== 配置 ==========
+const MAP=3600;
+const Z_TYPES={
+  normal:  {hp:40,spd:52,dmg:8,r:14,color:'#4a7',exp:10},
+  fast:    {hp:25,spd:115,dmg:5,r:11,color:'#a4f',exp:15},
+  tank:    {hp:190,spd:30,dmg:22,r:22,color:'#a44',exp:30},
+  spitter: {hp:38,spd:48,dmg:7,r:13,color:'#4af',exp:20,ranged:true},
+  exploder:{hp:65,spd:68,dmg:0,r:16,color:'#fa0',exp:25,explode:true},
+};
+
+// 武器模板
+const W_TEMPLATES={
+  pistol: {name:'手枪',   baseDmg:22,baseRate:330,baseClip:12,baseReload:1200,auto:false,spread:0.03,pellets:1,unlockCost:0},
+  shotgun:{name:'霰弹枪', baseDmg:34,baseRate:950,baseClip:6,baseReload:2200,auto:false,spread:0.22,pellets:5,unlockCost:300},
+  smg:    {name:'冲锋枪', baseDmg:11,baseRate:80, baseClip:25,baseReload:1500,auto:true, spread:0.09,pellets:1,unlockCost:500},
+  rifle:  {name:'突击步枪',baseDmg:17,baseRate:105,baseClip:30,baseReload:1900,auto:true, spread:0.05,pellets:1,unlockCost:800},
+};
+
+// 升级定义：每级效果
+const UPGRADE_EFFECTS={
+  damage:   {maxLv:10,costBase:50, costMul:1.4, perLv:4,         label:'伤害',icon:'💥'},
+  fireRate: {maxLv:8, costBase:60, costMul:1.5, perLv:12,        label:'射速',icon:'🔥'},
+  magazine: {maxLv:6, costBase:70, costMul:1.6, perLv:2,         label:'弹容量',icon:'🔋'},
+  reload:   {maxLv:5, costBase:80, costMul:1.7, perLv:200,       label:'换弹速度',icon:'⚡'},
+};
+
+// 初始化武器状态
+let weapons=[];
+let weaponUpgrades={};// weaponId -> {damage:{lv},fireRate:{lv},...}
+let unlocked={};      // weaponId -> bool
+
+function initWeapons(){
+  weapons=[];
+  weaponUpgrades={};
+  unlocked={};
+  Object.entries(W_TEMPLATES).forEach(([id,t])=>{
+    weapons.push({
+      id, name:t.name,
+      baseDmg:t.baseDmg, baseRate:t.baseRate, baseClip:t.baseClip, baseReload:t.baseReload,
+      auto:t.auto, spread:t.spread, pellets:t.pellets, unlockCost:t.unlockCost,
+      dmg:t.baseDmg, rate:t.baseRate, clip:t.baseClip, reload:t.baseReload,
+      ammo:t.baseClip, reserve:60, reloading:false, reloadT:0, cooldown:0,
+    });
+    weaponUpgrades[id]={damage:{lv:0},fireRate:{lv:0},magazine:{lv:0},reload:{lv:0}};
+    unlocked[id]=t.unlockCost===0;
+  });
+  // shotgun 无 fireRate
+  delete weaponUpgrades.shotgun.fireRate;
+}
+initWeapons();
+
+function applyUpgrade(w){
+  const u=weaponUpgrades[w.id];
+  w.dmg=w.baseDmg+UPGRADE_EFFECTS.damage.perLv*(u.damage?u.damage.lv:0);
+  w.rate=Math.max(30,w.baseRate-UPGRADE_EFFECTS.fireRate.perLv*(u.fireRate?u.fireRate.lv:0));
+  w.clip=w.baseClip+UPGRADE_EFFECTS.magazine.perLv*(u.magazine?u.magazine.lv:0);
+  w.reload=Math.max(400,w.baseReload-UPGRADE_EFFECTS.reload.perLv*(u.reload?u.reload.lv:0));
+}
+
+function upgradeCost(id,lv){
+  const e=UPGRADE_EFFECTS[id];
+  return Math.round(e.costBase*Math.pow(e.costMul,lv));
+}
+
+// ========== 游戏状态 ==========
+let state='playing';// playing | shop | over
+let wave=0, waveActive=false, waveDelay=0, waveSpawnLeft=0, spawnCd=0;
+let coins=0, killCount=0;
+let player, zombies, bullets, particles, pickups, floatTexts, decos;
+let keys={}, mouseX=0, mouseY=0, mouseDown=false;
+let shakeX=0, shakeY=0, shakeT=0;
+let msgTimer=0, msgText='';
+let lastTime=0;
+let currentWIdx=0;
+
+function mkPlayer(){return{x:MAP/2,y:MAP/2,vx:0,vy:0,spd:175,angle:0,hp:100,maxHp:100,r:16,inv:0,walkF:0}}
+
+function initGame(){
+  player=mkPlayer();
+  zombies=[]; bullets=[]; particles=[]; pickups=[]; floatTexts=[]; decos=[];
+  coins=0; killCount=0; wave=0; waveActive=false; waveDelay=3;
+  currentWIdx=0;
+  weapons.forEach(w=>{w.ammo=w.clip;w.reserve=60;w.reloading=false;w.reloadT=0;w.cooldown=0;applyUpgrade(w);});
+  unlocked.pistol=true;
+  genDecos();
+}
+
+function genDecos(){
+  decos=[];
+  for(let i=0;i<55;i++){
+    let x=80+Math.random()*(MAP-160), y=80+Math.random()*(MAP-160);
+    if(Math.hypot(x-player.x,y-player.y)<200)continue;
+    decos.push({x,y,t:['crate','barrel','ruin'][Math.floor(Math.random()*3)]});
+  }
+}
+
+// ========== 波次 ==========
+function startWave(){
+  wave++;
+  waveActive=true;
+  waveSpawnLeft=4+wave*3;
+  spawnCd=0;
+  showMsg(`⚔️ 第 ${wave} 波开始！`);
+}
+
+function spawnZ(){
+  let a=Math.random()*Math.PI*2, d=MAP/2+120;
+  let x=player.x+Math.cos(a)*d, y=player.y+Math.sin(a)*d;
+  x=Math.max(20,Math.min(MAP-20,x)); y=Math.max(20,Math.min(MAP-20,y));
+  let pool=['normal'];
+  if(wave>=2)pool.push('fast');
+  if(wave>=3)pool.push('spitter');
+  if(wave>=4)pool.push('exploder');
+  if(wave>=5)pool.push('tank');
+  let t=pool[Math.floor(Math.random()*pool.length)];
+  let zt=Z_TYPES[t];
+  let scale=t=='tank'?1.25:1;
+  zombies.push({
+    x,y,vx:0,vy:0,type:t,
+    hp:zt.hp*(0.9+wave*0.1), maxHp:zt.hp*(0.9+wave*0.1),
+    spd:zt.spd, dmg:zt.dmg, r:zt.r*scale, color:zt.color,
+    cd:0, flash:0, walkT:Math.random()*100,
+    ranged:!!zt.ranged, explode:!!zt.explode, exp:zt.exp,
+  });
+  waveSpawnLeft--;
+}
+
+// ========== 射击 ==========
+function shoot(){
+  let w=weapons[currentWIdx];
+  if(w.reloading||w.ammo<=0)return;
+  if(w.cooldown>0)return;
+  w.cooldown=w.rate;
+  w.ammo--;
+  shakeT=w.id==='shotgun'?8:w.id==='rifle'?5:3;
+  // muzzle flash
+  for(let i=0;i<(w.id==='shotgun'?6:3);i++){
+    particles.push({x:player.x+Math.cos(player.angle)*20,y:player.y+Math.sin(player.angle)*20,
+      vx:Math.cos(player.angle)*80+Math.random()*30-15,vy:Math.sin(player.angle)*80+Math.random()*30-15,
+      life:.1,maxLife:.1,color:w.id==='shotgun'?'#fa0':'#ff0',size:w.id==='shotgun'?5:3});
+  }
+  for(let p=0;p<w.pellets;p++){
+    let sp=w.spread*(w.ammo>0?1:1.3);
+    let a=player.angle+(Math.random()-.5)*sp*2;
+    bullets.push({x:player.x+Math.cos(player.angle)*16,y:player.y+Math.sin(player.angle)*16,
+      vx:Math.cos(a)*520,vy:Math.sin(a)*520,dmg:w.dmg,life:1.2});
+  }
+  if(w.ammo<=0&&w.reserve>0)setTimeout(()=>reloadW(),350);
+}
+
+function reloadW(){
+  let w=weapons[currentWIdx];
+  if(w.reloading||w.ammo>=w.clip||w.reserve<=0)return;
+  w.reloading=true; w.reloadT=w.reload;
+}
+
+// ========== 更新 ==========
+function update(dt){
+  if(state!=='playing')return;
+  let w=weapons[currentWIdx];
+
+  // 玩家移动
+  let mx=0,my=0;
+  if(keys['w']||keys['arrowup'])my=-1;
+  if(keys['s']||keys['arrowdown'])my=1;
+  if(keys['a']||keys['arrowleft'])mx=-1;
+  if(keys['d']||keys['arrowright'])mx=1;
+  let m=Math.hypot(mx,my);
+  if(m>0){mx/=m;my/=m;}
+  player.vx=mx*player.spd; player.vy=my*player.spd;
+  player.x+=player.vx*dt; player.y+=player.vy*dt;
+  player.x=Math.max(player.r,Math.min(MAP-player.r,player.x));
+  player.y=Math.max(player.r,Math.min(MAP-player.r,player.y));
+  player.angle=Math.atan2(mouseY-H/2,mouseX-W/2);
+  player.walkF+=dt*(m>0?8:0);
+  if(player.inv>0)player.inv-=dt;
+
+  // 武器
+  if(w.cooldown>0)w.cooldown-=dt*1000;
+  if(w.reloading){
+    w.reloadT-=dt*1000;
+    if(w.reloadT<=0){
+      let need=w.clip-w.ammo, take=Math.min(need,w.reserve);
+      w.ammo+=take; w.reserve-=take; w.reloading=false;
+    }
+  }
+  if(mouseDown&&w.auto)shoot();
+
+  // 波次
+  if(waveActive&&waveSpawnLeft>0){
+    spawnCd-=dt;
+    if(spawnCd<=0){spawnZ();spawnCd=Math.max(.2,1.8-wave*.04);}
+  }
+  if(waveActive&&zombies.length===0&&waveSpawnLeft<=0){
+    waveActive=false; waveDelay=4;
+    showMsg(`✅ 第 ${wave} 波完成！`);
+  }
+  if(!waveActive&&waveDelay>0){
+    waveDelay-=dt;
+    if(waveDelay<=0)startWave();
+  }
+
+  // 僵尸
+  for(let i=zombies.length-1;i>=0;i--){
+    let z=zombies[i];
+    let dx=player.x-z.x, dy=player.y-z.y, dist=Math.hypot(dx,dy);
+    if(dist>z.r+player.r+5){
+      let spd=z.spd;
+      z.x+=dx/dist*spd*dt; z.y+=dy/dist*spd*dt;
+    }
+    z.walkT+=dt;
+    if(z.flash>0)z.flash-=dt;
+
+    // 自爆
+    if(z.explode&&dist<z.r+player.r+18){
+      let dmg=35+weapons[currentWIdx].dmg*0.3;
+      if(player.inv<=0){player.hp-=dmg;player.inv=.5;shakeT=12;}
+      spawnExp(z.x,z.y,90);
+      addFloat(z.x,z.y-20,'💥 自爆！','#ff4444');
+      zombies.splice(i,1);continue;
+    }
+    // 近战
+    if(dist<z.r+player.r+5){
+      z.cd-=dt;
+      if(z.cd<=0){if(player.inv<=0){player.hp-=z.dmg;player.inv=.4;shakeT=5;}z.cd=1.2;}
+    }
+    // 远程
+    if(z.ranged&&dist<320&&z.cd<=0){
+      let a=Math.atan2(dy,dx);
+      bullets.push({x:z.x,y:z.y,vx:Math.cos(a)*200,vy:Math.sin(a)*200,dmg:z.dmg,life:2.5,enemy:true});
+      z.cd=2.5;
+    }
+    if(z.hp<=0){
+      let coin=z.exp||10;
+      coins+=coin; killCount++;
+      pickups.push({x:z.x,y:z.y,t:'coin',val:coin,life:12,bobT:Math.random()*6.28});
+      for(let j=0;j<8;j++)particles.push({x:z.x,y:z.y,vx:(Math.random()-.5)*180,vy:(Math.random()-.5)*180,life:.4+.2*Math.random(),maxLife:.6,color:z.color,size:3+Math.random()*3});
+      addFloat(z.x,z.y-20,`+${coin}💰`,'#ffd700');
+      zombies.splice(i,1);continue;
+    }
+  }
+
+  // 子弹
+  for(let i=bullets.length-1;i>=0;i--){
+    let b=bullets[i];
+    b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt;
+    if(b.enemy){
+      if(Math.hypot(b.x-player.x,b.y-player.y)<player.r+4){
+        if(player.inv<=0){player.hp-=b.dmg;player.inv=.3;}
+        bullets.splice(i,1);continue;
+      }
+    }else{
+      let hit=false;
+      for(let j=zombies.length-1;j>=0;j--){
+        let z=zombies[j];
+        if(Math.hypot(b.x-z.x,b.y-z.y)<z.r+3){
+          z.hp-=b.dmg; z.flash=.1;
+          for(let k=0;k<3;k++)particles.push({x:b.x,y:b.y,vx:(Math.random()-.5)*80,vy:(Math.random()-.5)*80,life:.25,maxLife:.25,color:'#ff0',size:2});
+          addFloat(b.x,b.y-10,`-${Math.round(b.dmg)}`,'#ff4444');
+          bullets.splice(i,1);hit=true;break;
+        }
+      }
+      if(hit)continue;
+    }
+    if(b.life<=0||b.x<0||b.x>MAP||b.y<0||b.y>MAP)bullets.splice(i,1);
+  }
+
+  // 拾取
+  for(let i=pickups.length-1;i>=0;i--){
+    let p=pickups[i];
+    p.life-=dt; p.bobT+=dt*3;
+    if(Math.hypot(p.x-player.x,p.y-player.y)<player.r+18){
+      if(p.t==='coin'){coins+=p.val;addFloat(player.x,player.y-30,`+${p.val}💰`,'#ffd700');}
+      if(p.t==='ammo'){weapons[currentWIdx].reserve=Math.min(weapons[currentWIdx].reserve+30,200);addFloat(player.x,player.y-30,'+弹药','#44ff44');}
+      if(p.t==='hp'){player.hp=Math.min(player.maxHp,player.hp+25);addFloat(player.x,player.y-30,'+HP','#44ff44');}
+      pickups.splice(i,1);continue;
+    }
+    if(p.life<=0)pickups.splice(i,1);
+  }
+
+  // 粒子
+  for(let i=particles.length-1;i>=0;i--){
+    let p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  // 浮字
+  for(let i=floatTexts.length-1;i>=0;i--){
+    let f=floatTexts[i];
+    f.y+=f.vy*dt; f.life-=dt;
+    if(f.life<=0)floatTexts.splice(i,1);
+  }
+
+  // 震屏
+  if(shakeT>0){shakeT-=dt*60;shakeX=(Math.random()-.5)*shakeT*1.5;shakeY=(Math.random()-.5)*shakeT*1.5;}
+  else{shakeX=0;shakeY=0;}
+
+  // 消息
+  if(msgTimer>0){msgTimer-=dt;if(msgTimer<=0)hideMsg();}
+
+  // 死亡
+  if(player.hp<=0)gameOver();
+}
+
+function spawnExp(x,y,r){
+  particles.push({x,y,vx:0,vy:0,life:.4,maxLife:.4,color:'#fa0',size:r,exp:true});
+  for(let i=0;i<18;i++){let a=Math.random()*Math.PI*2,s=80+Math.random()*200;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.4+.2*Math.random(),maxLife:.6,color:['#f00','#fa0','#ff0'][Math.floor(Math.random()*3)],size:3+Math.random()*4});}
+}
+function addFloat(x,y,val,color){floatTexts.push({x,y,val,life:.7,maxLife:.7,color:color||'#fff',vy:-40});}
+function showMsg(t){msgText=t;msgTimer=2.5;let el=document.getElementById('killMsg');el.textContent=t;el.classList.add('show');}
+function hideMsg(){let el=document.getElementById('killMsg');el.classList.remove('show');}
+
+function gameOver(){
+  state='over';
+  document.getElementById('goWave').textContent=wave;
+  document.getElementById('goKills').textContent=killCount;
+  document.getElementById('goCoins').textContent=coins;
+  document.getElementById('gameOver').classList.add('active');
+}
+
+// ========== 绘制 ==========
+function draw(){
+  let camX=player.x-W/2+shakeX, camY=player.y-H/2+shakeY;
+  // 背景
+  ctx.fillStyle='#111122';ctx.fillRect(0,0,W,H);
+  // 地面网格
+  ctx.strokeStyle='rgba(255,255,255,0.035)';ctx.lineWidth=1;
+  let gs=80, sx2=Math.floor(camX/gs)*gs, sy2=Math.floor(camY/gs)*gs;
+  for(let x=sx2;x<camX+W+gs;x+=gs){ctx.beginPath();ctx.moveTo(x-camX,0);ctx.lineTo(x-camX,H);ctx.stroke();}
+  for(let y=sy2;y<camY+H+gs;y+=gs){ctx.beginPath();ctx.moveTo(0,y-camY);ctx.lineTo(W,y-camY);ctx.stroke();}
+  // 边界
+  ctx.strokeStyle='#ff4444';ctx.lineWidth=3;
+  ctx.strokeRect(0-camX,0-camY,MAP,MAP);
+
+  // 装饰
+  decos.forEach(d=>{
+    let sx3=d.x-camX, sy3=d.y-camY;
+    if(sx3<-60||sx3>W+60||sy3<-60||sy3>H+60)return;
+    ctx.save();
+    if(d.t==='crate'){ctx.fillStyle='#8B6914';ctx.fillRect(sx3-28,sy3-28,56,56);ctx.strokeStyle='#654';ctx.strokeRect(sx3-28,sy3-28,56,56);}
+    else if(d.t==='barrel'){ctx.fillStyle='#444';ctx.fillRect(sx3-18,sy3-14,36,28);ctx.fillStyle='#f44';ctx.fillRect(sx3-18,sy3-14,36,8);}
+    else{ctx.fillStyle='#555';ctx.fillRect(sx3-35,sy3-6,70,12);ctx.fillStyle='#444';ctx.fillRect(sx3-25,sy3-12,50,6);}
+    ctx.restore();
+  });
+
+  // 拾取
+  pickups.forEach(p=>{
+    let sx3=p.x-camX, sy3=p.y-camY+bob(p.bobT)*4;
+    if(sx3<-20||sx3>W+20||sy3<-20||sy3>H+20)return;
+    ctx.save();ctx.translate(sx3,sy3);
+    if(p.t==='coin'){ctx.fillStyle='#ffd700';ctx.beginPath();ctx.arc(0,0,10,0,Math.PI*2);ctx.fill();ctx.fillStyle='#000';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(p.val,0,4);}
+    else if(p.t==='ammo'){ctx.fillStyle='#4af';ctx.fillRect(-8,-12,16,24);ctx.fillStyle='#226';ctx.fillRect(-8,0,16,12);}
+    else{ctx.font='18px sans-serif';ctx.textAlign='center';ctx.fillText('❤️',0,6);}
+    ctx.restore();
+  });
+
+  // 子弹
+  bullets.forEach(b=>{
+    let sx3=b.x-camX, sy3=b.y-camY;
+    ctx.beginPath();ctx.arc(sx3,sy3,3,0,Math.PI*2);
+    ctx.fillStyle=b.enemy?'#ff4444':'#ff0';ctx.fill();
+  });
+
+  // 僵尸
+  zombies.forEach(z=>{
+    let sx3=z.x-camX, sy3=z.y-camY;
+    if(sx3<-40||sx3>W+40||sy3<-40||sy3>H+40)return;
+    ctx.save();ctx.translate(sx3,sy3);
+    // 阴影
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(0,z.r+2,z.r*.8,6,0,0,Math.PI*2);ctx.fill();
+    // 身体
+    ctx.fillStyle=z.flash>0?'#fff':z.color;
+    if(z.explode){
+      ctx.beginPath();ctx.arc(0,0,z.r,0,Math.PI*2);ctx.fill();
+      ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('💥',0,4);
+    }else if(z.ranged){
+      ctx.beginPath();ctx.ellipse(0,0,z.r*.7,z.r,0,0,Math.PI*2);ctx.fill();
+      ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('🎯',0,4);
+    }else if(z.r>20){
+      ctx.beginPath();ctx.arc(0,0,z.r,0,Math.PI*2);ctx.fill();
+      ctx.font='16px sans-serif';ctx.textAlign='center';ctx.fillText('🛡️',0,5);
+    }else{
+      ctx.beginPath();ctx.arc(0,0,z.r,0,Math.PI*2);ctx.fill();
+      let ea=Math.atan2(player.y-z.y,player.x-z.x);
+      ctx.fillStyle='#f00';ctx.beginPath();ctx.arc(Math.cos(ea-.3)*5,Math.sin(ea-.3)*5-2,3,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(Math.cos(ea+.3)*5,Math.sin(ea+.3)*5-2,3,0,Math.PI*2);ctx.fill();
+    }
+    // 血条
+    let bw=z.r*2;
+    ctx.fillStyle='#333';ctx.fillRect(-bw/2,-z.r-10,bw,5);
+    ctx.fillStyle=z.hp/z.maxHp>.5?'#4caf50':'#ff4444';ctx.fillRect(-bw/2,-z.r-10,bw*(z.hp/z.maxHp),5);
+    ctx.restore();
+  });
+
+  // 玩家
+  let px=W/2, py=H/2;
+  ctx.save();ctx.translate(px,py);
+  if(player.inv>0&&Math.floor(player.inv*10)%2===0)ctx.globalAlpha=.4;
+  // 身体
+  let br=player.r;
+  ctx.fillStyle='#225588';ctx.beginPath();ctx.arc(0,0,br,0,Math.PI*2);ctx.fill();
+  // 头
+  ctx.fillStyle='#d4a574';ctx.beginPath();ctx.arc(0,-7,10,0,Math.PI*2);ctx.fill();
+  // 眼
+  let ex=Math.cos(player.angle)*4, ey=Math.sin(player.angle)*4-7;
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ex-3,ey,2.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(ex+3,ey,2.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#000';ctx.beginPath();ctx.arc(ex-3+Math.cos(player.angle)*1,ey+Math.sin(player.angle)*1,1.2,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(ex+3+Math.cos(player.angle)*1,ey+Math.sin(player.angle)*1,1.2,0,Math.PI*2);ctx.fill();
+  // 武器
+  ctx.rotate(player.angle);
+  let ww=weapons[currentWIdx];
+  let rec=ww.cooldown>ww.rate*.5?4:0;
+  ctx.fillStyle='#555';
+  if(ww.id==='shotgun'){ctx.fillRect(14,-3,26,6);ctx.fillStyle='#8B4513';ctx.fillRect(38,-2,8,4);}
+  else if(ww.id==='rifle'){ctx.fillRect(14,-2,30,4);ctx.fillStyle='#333';ctx.fillRect(22,-4,6,8);}
+  else if(ww.id==='smg'){ctx.fillRect(14,-2,20,4);ctx.fillStyle='#444';ctx.fillRect(32,-3,8,6);}
+  else{ctx.fillRect(14,-2,16,4);}
+  ctx.restore();
+
+  // 粒子
+  particles.forEach(p=>{
+    let sx3=p.x-camX, sy3=p.y-camY;
+    let a=Math.max(0,p.life/p.maxLife);
+    if(p.exp){
+      ctx.beginPath();ctx.arc(sx3,sy3,p.size*(1-a),0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,170,0,${a*.5})`;ctx.fill();
+      ctx.strokeStyle=`rgba(255,100,0,${a})`;ctx.lineWidth=3;ctx.stroke();
+    }else{
+      ctx.globalAlpha=a;ctx.fillStyle=p.color;
+      ctx.beginPath();ctx.arc(sx3,sy3,p.size*a,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+    }
+  });
+
+  // 浮字
+  floatTexts.forEach(f=>{
+    let sx3=f.x-camX, sy3=f.y-camY;
+    let a=Math.max(0,f.life/f.maxLife);
+    ctx.globalAlpha=a;ctx.fillStyle=f.color;ctx.font='bold 15px sans-serif';ctx.textAlign='center';
+    ctx.fillText(f.val,sx3,sy3);ctx.globalAlpha=1;
+  });
+
+  // ====== HUD ======
+  let ww=weapons[currentWIdx];
+  // HP
+  let hpPct=player.hp/player.maxHp;
+  document.getElementById('hpBar').style.width=(hpPct*220)+'px';
+  document.getElementById('hpBar').style.background=hpPct>.5?'#4caf50':hpPct>.25?'#ff9800':'#f44336';
+  document.getElementById('hpText').textContent=`❤️ ${Math.ceil(player.hp)}/${player.maxHp}`;
+  // 波次
+  document.getElementById('hud-wave').textContent=waveActive?`第 ${wave} 波`:waveDelay>0?`下波 ${waveDelay.toFixed(1)}s`:`第 ${wave} 波`;
+  // 金币
+  document.getElementById('hud-coins').textContent=`💰 ${coins}`;
+  // 弹药
+  let ammoEl=document.getElementById('hud-ammo');
+  ammoEl.textContent=`弹药: ${ww.ammo}/${ww.reserve}`;
+  // 换弹
+  let relEl=document.getElementById('hud-reload');
+  if(ww.reloading){relEl.style.display='block';relEl.textContent=`换弹中...${Math.ceil(ww.reloadT/1000*10)/10}s`;}
+  else{relEl.style.display='none';}
+  // 武器栏
+  renderWeaponBar();
+}
+
+function bob(t){return Math.sin(t)*4;}
+
+function renderWeaponBar(){
+  let cont=document.getElementById('hud-weapons');
+  if(cont.children.length!==weapons.length){
+    cont.innerHTML='';
+    weapons.forEach((w,i)=>{
+      let d=document.createElement('div');
+      d.className='w-btn'+(i===currentWIdx?' active':'')+(!unlocked[w.id]?' locked':'');
+      d.id='wbtn'+i;
+      d.innerHTML=`<span class="w-icon">${w.id==='pistol'?'🔫':w.id==='shotgun'?'💣':w.id==='smg'?'⚙️':'🔫'}</span><span class="w-name" style="font-size:10px">${w.name}</span><span class="w-key">[${i+1}]</span>`;
+      cont.appendChild(d);
+    });
+  }
+  for(let i=0;i<weapons.length;i++){
+    let d=document.getElementById('wbtn'+i);
+    if(!d)continue;
+    d.className='w-btn'+(i===currentWIdx?' active':'')+(!unlocked[weapons[i].id]?' locked':'');
+  }
+}
+
+// ========== 商店 ==========
+function toggleShop(){
+  if(state==='over')return;
+  state=state==='shop'?'playing':'shop';
+  document.getElementById('shop').classList.toggle('active',state==='shop');
+  if(state==='shop')refreshShop();
+}
+
+function refreshShop(){
+  document.getElementById('shopCoins').textContent=coins;
+  renderShopTabs();
+  renderShopUpgrades();
+}
+
+function renderShopTabs(){
+  let cont=document.getElementById('shopTabs');
+  cont.innerHTML='';
+  weapons.forEach((w,i)=>{
+    let tab=document.createElement('div');
+    tab.className='tab'+(i===currentWIdx?' active':'')+(!unlocked[w.id]&&w.unlockCost>0?' locked':'');
+    tab.textContent=`${w.id==='pistol'?'🔫':w.id==='shotgun'?'💣':w.id==='smg'?'⚙️':'🔫'} ${w.name}`;
+    if(unlocked[w.id]||w.unlockCost===0){
+      tab.onclick=()=>{currentWIdx=i;refreshShop();};
+    }
+    cont.appendChild(tab);
+  });
+}
+
+function renderShopUpgrades(){
+  let w=weapons[currentWIdx];
+  let cont=document.getElementById('shopUpgrades');
+  cont.innerHTML='';
+
+  // 解锁卡（未解锁时）
+  if(!unlocked[w.id]&&w.unlockCost>0){
+    let card=document.createElement('div');
+    card.className='card';
+    card.innerHTML=`<div class="card-icon">🔒</div><div class="card-name">解锁 ${w.name}</div><div class="card-desc">花费 ${w.unlockCost} 💰 解锁此武器</div><div class="card-cost">${w.unlockCost} 💰</div>`;
+    card.onclick=()=>{
+      if(coins>=w.unlockCost){
+        coins-=w.unlockCost;unlocked[w.id]=true;
+        showMsg(`🔓 已解锁 ${w.name}！`);
+        refreshShop();
+      }else showMsg('💰 金币不足！');
+    };
+    cont.appendChild(card);
+    return;
+  }
+
+  const upgradeKeys=Object.keys(UPGRADE_EFFECTS);
+  let grid=document.createElement('div');
+  grid.className='upgrade-grid';
+
+  upgradeKeys.forEach(key=>{
+    // shotgun 无 fireRate
+    if(w.id==='shotgun'&&key==='fireRate')return;
+    let u=weaponUpgrades[w.id][key];
+    if(!u)return;
+    let e=UPGRADE_EFFECTS[key];
+    let lv=u.lv||0;
+    let maxed=lv>=e.maxLv;
+    let cost=upgradeCost(key,lv);
+    let canBuy=coins>=cost&&!maxed;
+
+    let card=document.createElement('div');
+    card.className='card'+(maxed?' maxed':'');
+    let desc=getDesc(key,w,lv);
+    card.innerHTML=`<div class="card-icon">${e.icon}</div><div class="card-name">${e.label} Lv.${lv}${maxed?' (MAX)':''}</div><div class="card-desc">${desc}</div><div class="card-cost">${maxed?'已满级':cost+' 💰'}</div>`;
+    if(canBuy){
+      card.onclick=()=>{
+        if(coins>=cost&&(u.lv||0)<e.maxLv){
+          coins-=cost;u.lv++;applyUpgrade(w);refreshShop();
+          showMsg(`⬆️ ${w.name} ${e.label} → Lv.${u.lv}`);
+        }
+      };
+    }
+    grid.appendChild(card);
+  });
+  cont.appendChild(grid);
+}
+
+function getDesc(key,w,lv){
+  switch(key){
+    case 'damage':   return `伤害: ${w.baseDmg+4*lv}（每级+4）`;
+    case 'fireRate':  return `间隔: ${Math.max(30,w.baseRate-12*(lv+1))}ms（每级-12ms）`;
+    case 'magazine':  return `弹容: ${w.baseClip+2*lv} 发（每级+2）`;
+    case 'reload':    return `换弹: ${Math.max(400,w.baseReload-200*(lv+1))}ms（每级-200ms）`;
+    default:return'';
+  }
+}
+
+// ========== 输入 ==========
+window.addEventListener('keydown',e=>{
+  let k=e.key.toLowerCase();
+  keys[k]=true;
+  if(k==='b'){e.preventDefault();toggleShop();}
+  if(k>='1'&&k<='9'){
+    let idx=parseInt(e.key)-1;
+    if(idx<weapons.length&&unlocked[weapons[idx].id])currentWIdx=idx;
+  }
+  if(k==='r')reloadW();
+});
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+canvas.addEventListener('mousemove',e=>{mouseX=e.clientX;mouseY=e.clientY;});
+canvas.addEventListener('mousedown',e=>{if(e.button===0){mouseDown=true;let w=weapons[currentWIdx];if(!w.auto)shoot();}});
+canvas.addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false;});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ========== 主循环 ==========
+function loop(ts){
+  let dt=Math.min((ts-lastTime)/1000,.05);
+  lastTime=ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+initGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

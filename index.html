@@ -6,7 +6,7 @@
 <title>僵尸战士 Zombie Warrior</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a0a;color:#eee;font-family:'Microsoft YaHei',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;overflow:hidden}
+body{background:#0a0a0a;color:#eee;font-family:'Microsoft YaHei',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:30px 0}
 .bg{position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,#1a0a0a 0%,#000 70%);z-index:0}
 h1{font-size:clamp(2rem,6vw,3.5rem);color:#c00;text-shadow:0 0 30px rgba(200,0,0,0.6);margin-bottom:10px;position:relative;z-index:1;letter-spacing:4px}
 .subtitle{color:#888;font-size:clamp(0.9rem,2.5vw,1.2rem);margin-bottom:40px;position:relative;z-index:1}
@@ -15,6 +15,10 @@ a{display:block;padding:18px 30px;border:2px solid #c00;border-radius:12px;color
 a:hover{background:rgba(200,0,0,0.25);transform:scale(1.03);box-shadow:0 0 25px rgba(200,0,0,0.4)}
 a .icon{font-size:1.5rem;margin-right:8px}
 a .desc{display:block;font-size:0.8rem;color:#999;margin-top:6px}
+h2{position:relative;z-index:1;color:#777;font-size:1rem;margin:40px 0 20px;letter-spacing:2px}
+.classic{display:flex;flex-wrap:wrap;gap:10px;position:relative;z-index:1;width:min(90%,700px);justify-content:center}
+.classic a{padding:10px 18px;font-size:0.95rem;border-width:1px;border-color:#555;background:rgba(255,255,255,0.03)}
+.classic a:hover{border-color:#c00;box-shadow:0 0 15px rgba(200,0,0,0.3)}
 </style>
 </head>
 <body>
@@ -22,6 +26,10 @@ a .desc{display:block;font-size:0.8rem;color:#999;margin-top:6px}
 <h1>🧟 僵尸战士</h1>
 <p class="subtitle">选择你的平台开始战斗</p>
 <div class="links">
+  <a href="zombie_warrior_50.html">
+    🏆 50关完整版（最新）
+    <span class="desc">50个关卡 / BOSS战 / 2026-05-16 版</span>
+  </a>
   <a href="zombie_warrior.html">
     🖥️ 电脑版
     <span class="desc">WASD移动 / 鼠标射击 / 键盘技能</span>
@@ -31,5 +39,20 @@ a .desc{display:block;font-size:0.8rem;color:#999;margin-top:6px}
     <span class="desc">虚拟摇杆 / 自动瞄准 / 触屏操作</span>
   </a>
 </div>
-<!-- v1.0 -->\n</body>
+<h2>— 经典合集 —</h2>
+<div class="classic">
+  <a href="classic/zombie_game.html">暗黑僵尸炮手</a>
+  <a href="classic/zombie_game_3d.html">僵尸炮手 3D</a>
+  <a href="classic/zombie_game_3d_pro.html">僵尸炮手 3D Pro</a>
+  <a href="classic/zombie_cannon.html">塔防大炮</a>
+  <a href="classic/zombie_cannon_hd.html">塔防大炮 HD</a>
+  <a href="classic/zombie_cannon_hd2.html">塔防大炮 HD2</a>
+  <a href="classic/zombie_shooter.html">僵尸射击</a>
+  <a href="classic/zombie_upgrade_shooter.html">升级射击版</a>
+  <a href="classic/zombie_upgrade_v2.html">升级版 V2</a>
+  <a href="classic/horror_survival.html">恐怖生存</a>
+  <a href="classic/horror_survival_plus.html">恐怖生存 Plus</a>
+</div>
+<!-- v2.0 -->
+</body>
 </html>

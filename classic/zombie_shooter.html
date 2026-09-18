@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>僵尸枪战 - Zombie Shooter</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Courier New', monospace; overflow: hidden; user-select: none; }
+#gameContainer { position: relative; }
+canvas { display: block; cursor: none; }
+#ui { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; }
+#hud { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 14px; }
+.hud-panel { background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 12px; }
+.hud-label { font-size: 10px; color: #666; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 3px; }
+.hud-value { font-size: 20px; color: #eee; font-weight: bold; letter-spacing: 2px; }
+#healthBar { width: 150px; height: 8px; background: #222; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+#healthFill { height: 100%; border-radius: 4px; transition: width 0.15s; }
+#waveBox { text-align: center; }
+#waveNum { font-size: 30px; color: #e24b4a; font-weight: bold; letter-spacing: 3px; }
+#scoreNum { font-size: 18px; color: #ef9f27; font-weight: bold; letter-spacing: 2px; margin-top: 2px; }
+#weaponBox { text-align: right; }
+#weaponName { font-size: 13px; color: #97c459; letter-spacing: 2px; font-weight: bold; margin-bottom: 4px; }
+#ammoDisplay { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; max-width: 180px; }
+.ammo-bullet { width: 5px; height: 13px; border-radius: 2px; }
+#ammoNum { font-size: 14px; color: #ef9f27; letter-spacing: 1px; margin-top: 3px; }
+#reloadBar { width: 100%; height: 3px; background: #222; border-radius: 2px; margin-top: 4px; display: none; }
+#reloadFill { height: 100%; background: #e24b4a; border-radius: 2px; transition: width 0.1s linear; }
+#waveAnnounce { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+.wa-wave { font-size: 13px; color: #888; letter-spacing: 6px; text-transform: uppercase; }
+.wa-num { font-size: 64px; color: #e24b4a; font-weight: bold; letter-spacing: 6px; line-height: 1; margin: 4px 0; }
+.wa-sub { font-size: 12px; color: #666; letter-spacing: 8px; }
+#killFeed { position: absolute; top: 80px; left: 14px; pointer-events: none; display: flex; flex-direction: column; gap: 3px; }
+.kill-msg { font-size: 11px; color: #e24b4a; letter-spacing: 1px; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 3px; animation: killFadeIn 0.2s ease; }
+@keyframes killFadeIn { from { opacity:0; transform: translateX(-10px); } to { opacity:1; transform: translateX(0); } }
+#overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+#overlay.hidden { display: none; }
+.ov-title { font-size: 46px; color: #e24b4a; font-weight: bold; letter-spacing: 8px; animation: titlePulse 2s infinite; }
+@keyframes titlePulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+.ov-sub { font-size: 13px; color: #555; letter-spacing: 5px; }
+.ov-score { font-size: 22px; color: #ef9f27; font-weight: bold; letter-spacing: 3px; }
+.ov-hint { font-size: 11px; color: #444; letter-spacing: 2px; line-height: 1.8; text-align: center; }
+.start-btn { margin-top: 8px; padding: 11px 44px; background: transparent; border: 1.5px solid #e24b4a; color: #e24b4a; font-size: 16px; font-family: 'Courier New', monospace; letter-spacing: 4px; cursor: pointer; transition: all 0.2s; border-radius: 4px; }
+.start-btn:hover { background: rgba(226,75,74,0.15); }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="900" height="600"></canvas>
+  <div id="ui">
+    <div id="hud">
+      <div class="hud-panel hud-left">
+        <div class="hud-label">生命值</div>
+        <div id="healthBar"><div id="healthFill"></div></div>
+        <div id="healthNum" class="hud-value" style="color:#e24b4a;font-size:18px;">100</div>
+      </div>
+      <div class="hud-panel" id="waveBox">
+        <div class="hud-label">波次</div>
+        <div id="waveNum">1</div>
+        <div class="hud-label" style="margin-top:4px;">得分</div>
+        <div id="scoreNum">0</div>
+      </div>
+      <div class="hud-panel" id="weaponBox">
+        <div id="weaponName">突击步枪</div>
+        <div id="ammoDisplay"></div>
+        <div id="ammoNum">30 / 90</div>
+        <div id="reloadBar"><div id="reloadFill" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div id="waveAnnounce">
+      <div class="wa-wave">— WAVE —</div>
+      <div class="wa-num" id="waNum">1</div>
+      <div class="wa-sub">BEGINS</div>
+    </div>
+    <div id="killFeed"></div>
+  </div>
+  <div id="overlay">
+    <div class="ov-title">僵尸枪战</div>
+    <div class="ov-sub">ZOMBIE SHOOTER</div>
+    <div id="finalScore" class="ov-score" style="display:none"></div>
+    <button class="start-btn" id="startBtn">开始游戏</button>
+    <div class="ov-hint">WASD 移动 &nbsp;|&nbsp; 鼠标瞄准射击 &nbsp;|&nbsp; R 装弹 &nbsp;|&nbsp; Q 切换武器<br>消灭所有僵尸，尽可能活下去！</div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+/* ── 常量 ── */
+const TILE = 48;
+const ZOMBIE_NAMES = { normal:'普通僵尸', fast:'快速尸', tank:'坦克尸', spitter:'吐酸尸', exploder:'爆炸尸' };
+const WEAPONS = {
+  rifle:   { name:'突击步枪', maxAmmo:30, reserve:90,  dmg:18, rate:120, reload:1800, spread:0.06, pellets:1, color:'#97c459', auto:true  },
+  pistol:  { name:'手枪',     maxAmmo:12, reserve:60,  dmg:28, rate:320, reload:1100, spread:0.03, pellets:1, color:'#ef9f27', auto:false },
+  shotgun: { name:'霰弹枪',   maxAmmo:6,  reserve:30,  dmg:38, rate:900, reload:2100, spread:0.22, pellets:6, color:'#f09595', auto:false },
+  smg:     { name:'冲锋枪',   maxAmmo:24, reserve:120, dmg:12, rate:80,  reload:1400, spread:0.09, pellets:1, color:'#b5d4f4', auto:true  },
+};
+const WEAPON_LIST = ['pistol','rifle','smg','shotgun'];
+
+/* ── 状态 ── */
+let state = 'menu';
+let score = 0, wave = 1, gameTime = 0;
+let particles = [], bloodSplats = [], muzzleFlashes = [], enemyBullets = [], pickups = [];
+let bullets = [], zombies = [], floatingTexts = [];
+let keys = {}, mouse = { x: W/2, y: H/2, down: false };
+let screenShake = { x:0, y:0, t:0 };
+let player = {}, lastTime = 0, gameLoopId;
+let waveActive = false, waveDelay = 0, waveAnnTimer = 0;
+let currentWeaponIdx = 2; // rifle
+
+/* ── 地图装饰 ── */
+let mapDeco = [];
+function genDeco() {
+  mapDeco = [];
+  for (let i = 0; i < 28; i++) {
+    const t = Math.random();
+    mapDeco.push({
+      x: 60 + Math.random() * (W-120),
+      y: 60 + Math.random() * (H-120),
+      type: t < 0.4 ? 'crate' : t < 0.7 ? 'barrel' : 'debris',
+      rot: Math.random() * Math.PI * 2,
+      s: 0.8 + Math.random() * 0.4
+    });
+  }
+}
+
+/* ── 玩家初始化 ── */
+function initPlayer() {
+  currentWeaponIdx = 2;
+  const wKey = WEAPON_LIST[currentWeaponIdx];
+  const wp = WEAPONS[wKey];
+  player = {
+    x: W/2, y: H/2, r: 15,
+    hp: 120, maxHp: 120,
+    speed: 175,
+    weapon: wKey,
+    ammo: wp.maxAmmo,
+    reserve: wp.reserve,
+    lastFire: 0,
+    reloading: false, reloadStart: 0,
+    facing: 0,
+    invincible: 0,
+    kills: 0,
+    walkAnim: 0,   // 行走动画计时
+    walkDir: 0,    // 行走摆动方向
+    moving: false,
+    weaponAnim: 0, // 武器后坐动画
+    weapons: Object.fromEntries(WEAPON_LIST.map(k => [k, { ammo: WEAPONS[k].maxAmmo, reserve: WEAPONS[k].reserve }]))
+  };
+  player.weapons[wKey].ammo = wp.maxAmmo;
+}
+
+/* ── 僵尸 ── */
+function spawnZombies(wNum) {
+  const count = 5 + wNum * 3;
+  const pool = wNum >= 5 ? ['normal','fast','tank','spitter','exploder'] :
+               wNum >= 3 ? ['normal','fast','tank','spitter'] :
+               wNum >= 2 ? ['normal','fast','tank'] : ['normal','normal','normal','fast'];
+  for (let i = 0; i < count; i++) {
+    const type = pool[Math.floor(Math.random()*pool.length)];
+    let x, y, edge = Math.floor(Math.random()*4);
+    if (edge===0){x=Math.random()*W;y=-40;}
+    else if(edge===1){x=Math.random()*W;y=H+40;}
+    else if(edge===2){x=-40;y=Math.random()*H;}
+    else{x=W+40;y=Math.random()*H;}
+    zombies.push(makeZombie(x,y,type));
+  }
+}
+
+function makeZombie(x,y,type) {
+  const cfgs = {
+    normal:  { hp:80,  spd:62,  r:14, col:'#3B6D11', dmg:14, sc:10, range:0,   atkRate:0.8 },
+    fast:    { hp:40,  spd:135, r:10, col:'#639922', dmg:8,  sc:15, range:0,   atkRate:1.2 },
+    tank:    { hp:260, spd:36,  r:22, col:'#2c2c2a', dmg:28, sc:30, range:0,   atkRate:0.5 },
+    spitter: { hp:55,  spd:52,  r:13, col:'#534AB7', dmg:10, sc:25, range:290, atkRate:0.3 },
+    exploder:{ hp:70,  spd:90,  r:16, col:'#854F0B', dmg:45, sc:40, range:0,   atkRate:0.3 },
+  };
+  const c = cfgs[type] || cfgs.normal;
+  return { x,y,type, ...c, maxHp:c.hp, angle:0, hitFlash:0, deathAnim:-1,
+           lastShoot:0, walkAnim:0, legAngle:0, wobble:Math.random()*Math.PI*2 };
+}
+
+/* ── 子弹 ── */
+function fireBullet(wx,wy,angle,wKey) {
+  const wp = WEAPONS[wKey];
+  for (let p=0;p<(wp.pellets||1);p++) {
+    const a = angle+(Math.random()-0.5)*wp.spread*2;
+    bullets.push({ x:wx,y:wy, vx:Math.cos(a)*720, vy:Math.sin(a)*720,
+      r:4, life:1.1, dmg:wp.dmg, color:wp.color, trail:[] });
+  }
+  muzzleFlashes.push({ x:wx,y:wy, life:0.09, angle });
+  screenShake.t = 0.06; screenShake.x = (Math.random()-0.5)*5; screenShake.y = (Math.random()-0.5)*5;
+  player.weaponAnim = 0.12;
+}
+
+function fireEnemyBullet(x,y,angle,dmg) {
+  enemyBullets.push({ x,y, vx:Math.cos(angle)*300, vy:Math.sin(angle)*300,
+    r:5, life:2.0, dmg, color:'#e24b4a' });
+}
+
+/* ── 粒子 ── */
+function spawnParticle(x,y,color,count,speed=100,life=0.7) {
+  for (let i=0;i<count;i++) {
+    const a=Math.random()*Math.PI*2, sp=speed*0.5+Math.random()*speed;
+    particles.push({ x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life, maxLife:life, color, r:1.5+Math.random()*3 });
+  }
+}
+function spawnBlood(x,y,count=8) {
+  bloodSplats.push({ x,y, r:6+Math.random()*14, alpha:0.75, col:'#791f1f',
+    rot:Math.random()*Math.PI*2, sx:1+Math.random()*0.6 });
+  spawnParticle(x,y,'#a32d2d',count,140);
+}
+function spawnExplosion(x,y) {
+  spawnParticle(x,y,'#ef9f27',20,200,1.0);
+  spawnParticle(x,y,'#e24b4a',15,160,0.8);
+  spawnParticle(x,y,'#fac775',10,250,0.6);
+  bloodSplats.push({ x,y, r:30, alpha:0.5, col:'#412402', rot:0, sx:1 });
+  screenShake.t=0.25; screenShake.x=(Math.random()-0.5)*18; screenShake.y=(Math.random()-0.5)*18;
+}
+
+/* ── 浮动伤害数字 ── */
+function spawnDmgText(x,y,val,color='#fff') {
+  floatingTexts.push({ x, y:y-10, val:Math.round(val), life:1.0, color, vy:-45 });
+}
+
+/* ── 拾取物 ── */
+function trySpawnPickup(x,y) {
+  if (Math.random()>0.32) return;
+  const r=Math.random();
+  let type,col,label;
+  if(r<0.3){type='health';col='#97c459';label='HP+30';}
+  else if(r<0.55){type='ammo';col='#ef9f27';label='AMMO';}
+  else if(r<0.68){type='shotgun';col='#f09595';label='霰弹';}
+  else if(r<0.8){type='smg';col='#b5d4f4';label='SMG';}
+  else if(r<0.9){type='rifle';col='#97c459';label='步枪';}
+  else{type='pistol';col='#ef9f27';label='手枪';}
+  pickups.push({ x,y,type,col,label,life:15,pulse:0 });
+}
+function collectPickup(p) {
+  if(p.type==='health') {
+    player.hp=Math.min(player.hp+30,player.maxHp);
+    spawnParticle(player.x,player.y,'#97c459',12,80);
+    addKillMsg('拾取了医疗包 +30 HP');
+  } else if(p.type==='ammo') {
+    player.weapons[player.weapon].reserve=Math.min(player.weapons[player.weapon].reserve+40,140);
+    addKillMsg('拾取了弹药包 +40');
+  } else if(WEAPONS[p.type]) {
+    switchToWeapon(p.type);
+    addKillMsg('拾取了'+WEAPONS[p.type].name);
+  }
+  spawnParticle(p.x,p.y,p.col,8,60);
+}
+
+/* ── 武器切换 ── */
+function switchToWeapon(wKey) {
+  if (!WEAPONS[wKey]) return;
+  player.weapon = wKey;
+  currentWeaponIdx = WEAPON_LIST.indexOf(wKey);
+  const ws = player.weapons[wKey];
+  player.ammo = ws.ammo;
+  player.reserve = ws.reserve;
+  player.reloading = false;
+  updateHUD();
+}
+function cycleWeapon() {
+  const saveWs = player.weapons[player.weapon];
+  saveWs.ammo = player.ammo;
+  saveWs.reserve = player.reserve;
+  currentWeaponIdx = (currentWeaponIdx+1)%WEAPON_LIST.length;
+  switchToWeapon(WEAPON_LIST[currentWeaponIdx]);
+}
+
+/* ── 装弹 ── */
+function startReload() {
+  if (player.reloading) return;
+  const wp = WEAPONS[player.weapon];
+  if (player.ammo>=wp.maxAmmo || player.reserve<=0) return;
+  player.reloading=true;
+  player.reloadStart=performance.now();
+}
+function updateReload(now) {
+  if (!player.reloading) return;
+  const wp = WEAPONS[player.weapon];
+  const elapsed = now-player.reloadStart;
+  document.getElementById('reloadFill').style.width = Math.min(100, elapsed/wp.reload*100)+'%';
+  if (elapsed>=wp.reload) {
+    const need=wp.maxAmmo-player.ammo;
+    const take=Math.min(need,player.reserve);
+    player.ammo+=take; player.reserve-=take;
+    player.weapons[player.weapon].ammo=player.ammo;
+    player.weapons[player.weapon].reserve=player.reserve;
+    player.reloading=false;
+    document.getElementById('reloadBar').style.display='none';
+    document.getElementById('reloadFill').style.width='0%';
+  }
+}
+
+/* ── 击杀消息 ── */
+function addKillMsg(msg) {
+  const kf = document.getElementById('killFeed');
+  const d = document.createElement('div');
+  d.className = 'kill-msg';
+  d.textContent = msg;
+  kf.appendChild(d);
+  if (kf.children.length > 5) kf.removeChild(kf.firstChild);
+  setTimeout(()=>{ if(d.parentNode)d.parentNode.removeChild(d); }, 3000);
+}
+
+/* ── 波次 ── */
+function startWave(n) {
+  waveActive=true;
+  spawnZombies(n);
+  const el=document.getElementById('waveAnnounce');
+  document.getElementById('waNum').textContent=n;
+  el.style.opacity='1';
+  waveAnnTimer=2.8;
+}
+
+/* ── 游戏循环 ── */
+function gameLoop(ts) {
+  if (state!=='playing') return;
+  const dt = Math.min((ts-lastTime)/1000, 0.05);
+  lastTime=ts; gameTime+=dt;
+
+  if (waveAnnTimer>0) { waveAnnTimer-=dt; if(waveAnnTimer<=0) document.getElementById('waveAnnounce').style.opacity='0'; }
+
+  // 屏幕震动衰减
+  if (screenShake.t>0) { screenShake.t-=dt; if(screenShake.t<=0){screenShake.x=0;screenShake.y=0;} }
+
+  updateReload(ts);
+
+  // 玩家移动
+  let mdx=0,mdy=0;
+  if(keys['w']||keys['arrowup'])mdy-=1;
+  if(keys['s']||keys['arrowdown'])mdy+=1;
+  if(keys['a']||keys['arrowleft'])mdx-=1;
+  if(keys['d']||keys['arrowright'])mdx+=1;
+  const isMoving = mdx!==0||mdy!==0;
+  player.moving=isMoving;
+  if(isMoving && mdx!==0&&mdy!==0){mdx*=0.707;mdy*=0.707;}
+  player.x=Math.max(player.r,Math.min(W-player.r, player.x+mdx*player.speed*dt));
+  player.y=Math.max(player.r,Math.min(H-player.r, player.y+mdy*player.speed*dt));
+  player.facing=Math.atan2(mouse.y-player.y, mouse.x-player.x);
+  if(isMoving) player.walkAnim+=dt*8;
+  if(player.weaponAnim>0) player.weaponAnim-=dt;
+  if(player.invincible>0) player.invincible-=dt;
+
+  // 射击
+  const wp=WEAPONS[player.weapon];
+  if(mouse.down && !player.reloading && player.ammo>0) {
+    if(ts-player.lastFire>=wp.rate) {
+      fireBullet(player.x,player.y,player.facing,player.weapon);
+      player.ammo--; player.weapons[player.weapon].ammo=player.ammo;
+      player.lastFire=ts;
+      if(player.ammo===0 && player.reserve>0) startReload();
+    }
+  }
+
+  // 子弹更新
+  bullets = bullets.filter(b => {
+    b.trail.push({x:b.x,y:b.y});
+    if(b.trail.length>4) b.trail.shift();
+    b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt;
+    if(b.life<=0||b.x<0||b.x>W||b.y<0||b.y>H) return false;
+    for(let i=zombies.length-1;i>=0;i--) {
+      const z=zombies[i];
+      if(z.deathAnim>=0) continue;
+      if(Math.hypot(b.x-z.x,b.y-z.y)<z.r+b.r) {
+        z.hp-=b.dmg; z.hitFlash=0.13;
+        spawnBlood(b.x,b.y,5);
+        spawnDmgText(z.x,z.y-z.r,b.dmg,'#fff');
+        if(z.hp<=0) {
+          score+=z.score; player.kills++;
+          z.deathAnim=0.55;
+          addKillMsg('击杀 '+ZOMBIE_NAMES[z.type]+' +'+z.score);
+          if(z.type==='exploder') spawnExplosion(z.x,z.y);
+          else trySpawnPickup(z.x,z.y);
+        }
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // 敌方子弹
+  enemyBullets = enemyBullets.filter(eb => {
+    eb.x+=eb.vx*dt; eb.y+=eb.vy*dt; eb.life-=dt;
+    if(eb.life<=0||eb.x<0||eb.x>W||eb.y<0||eb.y>H) return false;
+    if(player.invincible<=0 && Math.hypot(eb.x-player.x,eb.y-player.y)<player.r+eb.r) {
+      player.hp-=eb.dmg; player.invincible=0.4;
+      spawnParticle(player.x,player.y,'#e24b4a',5,80);
+      spawnDmgText(player.x,player.y-player.r,eb.dmg,'#e24b4a');
+      if(player.hp<=0){endGame();return false;}
+      return false;
+    }
+    return true;
+  });
+
+  // 僵尸 AI
+  zombies.forEach(z => {
+    if(z.deathAnim>=0){z.deathAnim-=dt;return;}
+    z.walkAnim+=dt*(z.spd/60);
+    const dx2=player.x-z.x, dy2=player.y-z.y;
+    const dist=Math.hypot(dx2,dy2);
+    if(dist<1) return;
+    z.angle=Math.atan2(dy2,dx2);
+    if(z.type==='spitter'&&dist<z.range) {
+      if(ts-z.lastShoot>2400){
+        fireEnemyBullet(z.x,z.y,z.angle+(Math.random()-0.5)*0.14,z.dmg);
+        z.lastShoot=ts;
+      }
+      if(dist>z.r+player.r+80){z.x+=(dx2/dist)*z.spd*0.4*dt;z.y+=(dy2/dist)*z.spd*0.4*dt;}
+    } else {
+      z.x+=(dx2/dist)*z.spd*dt; z.y+=(dy2/dist)*z.spd*dt;
+    }
+    if(z.type==='exploder'&&dist<z.r+player.r+10) {
+      spawnExplosion(z.x,z.y);
+      player.hp-=z.dmg; player.invincible=0.6;
+      z.deathAnim=0.01; score+=z.score;
+      spawnDmgText(player.x,player.y,z.dmg,'#e24b4a');
+      if(player.hp<=0) endGame();
+      return;
+    }
+    if(player.invincible<=0&&dist<z.r+player.r) {
+      player.hp-=z.dmg*dt*2; player.invincible=0.28;
+      if(player.hp<=0){endGame();return;}
+    }
+    if(z.hitFlash>0) z.hitFlash-=dt;
+  });
+  zombies=zombies.filter(z=>z.deathAnim===-1||z.deathAnim>0);
+
+  // 拾取物
+  pickups.forEach(p=>{p.life-=dt;p.pulse+=dt*3.5;
+    if(Math.hypot(p.x-player.x,p.y-player.y)<20){collectPickup(p);p.life=-1;}
+  });
+  pickups=pickups.filter(p=>p.life>0);
+
+  // 粒子
+  particles=particles.filter(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=0.88;p.vy*=0.88;p.life-=dt;return p.life>0;});
+  muzzleFlashes=muzzleFlashes.filter(m=>{m.life-=dt;return m.life>0;});
+  floatingTexts=floatingTexts.filter(ft=>{ft.y+=ft.vy*dt;ft.life-=dt;return ft.life>0;});
+
+  // 波次判断
+  if(zombies.length===0&&waveActive){waveActive=false;waveDelay=3.5;}
+  if(!waveActive&&waveDelay>0){waveDelay-=dt;
+    if(waveDelay<=0){wave++;document.getElementById('waveNum').textContent=wave;startWave(wave);}
+  }
+
+  draw();
+  updateHUD();
+  gameLoopId=requestAnimationFrame(gameLoop);
+}
+
+/* ══════════════ 绘制 ══════════════ */
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  const sx = screenShake.t>0 ? screenShake.x*(screenShake.t/0.25)*Math.random() : 0;
+  const sy = screenShake.t>0 ? screenShake.y*(screenShake.t/0.25)*Math.random() : 0;
+  ctx.save();
+  ctx.translate(sx,sy);
+
+  // 地板
+  drawFloor();
+
+  // 装饰物
+  mapDeco.forEach(d => drawDeco(d));
+
+  // 血迹
+  bloodSplats.forEach(s=>{
+    ctx.save();
+    ctx.globalAlpha=s.alpha*0.85;
+    ctx.translate(s.x,s.y);
+    ctx.rotate(s.rot);
+    ctx.scale(s.sx,1);
+    ctx.fillStyle=s.col;
+    ctx.beginPath(); ctx.ellipse(0,0,s.r,s.r*0.6,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+  ctx.globalAlpha=1;
+
+  // 拾取物
+  pickups.forEach(p=>{
+    const pulse=Math.sin(p.pulse)*4;
+    ctx.save(); ctx.translate(p.x,p.y);
+    ctx.fillStyle=p.col+'28';
+    ctx.beginPath(); ctx.arc(0,0,16+pulse,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=p.col; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(0,0,13+pulse,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle=p.col; ctx.font='bold 8px Courier New';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(p.label,0,0);
+    ctx.restore();
+  });
+
+  // 僵尸
+  zombies.forEach(z => drawZombie(z));
+
+  // 玩家子弹（含轨迹）
+  bullets.forEach(b => {
+    if(b.trail.length>1) {
+      ctx.strokeStyle=b.color+'88'; ctx.lineWidth=2;
+      ctx.beginPath();
+      b.trail.forEach((t,i)=>i===0?ctx.moveTo(t.x,t.y):ctx.lineTo(t.x,t.y));
+      ctx.stroke();
+    }
+    ctx.fillStyle=b.color;
+    ctx.shadowColor=b.color; ctx.shadowBlur=8;
+    ctx.beginPath(); ctx.arc(b.x,b.y,2.5,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0;
+  });
+
+  // 敌方子弹
+  enemyBullets.forEach(eb=>{
+    ctx.fillStyle=eb.color;
+    ctx.shadowColor=eb.color; ctx.shadowBlur=10;
+    ctx.beginPath(); ctx.arc(eb.x,eb.y,3,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur=0;
+  });
+
+  // 粒子
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  // 枪口火焰
+  muzzleFlashes.forEach(m=>{
+    ctx.save(); ctx.translate(player.x,player.y); ctx.rotate(m.angle);
+    ctx.globalAlpha=m.life*13;
+    const grd=ctx.createLinearGradient(15,0,42,0);
+    grd.addColorStop(0,'#fac775'); grd.addColorStop(1,'transparent');
+    ctx.fillStyle=grd;
+    ctx.beginPath(); ctx.moveTo(15,-7); ctx.lineTo(42,0); ctx.lineTo(15,7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.globalAlpha*=0.5;
+    ctx.beginPath(); ctx.arc(18,0,4,0,Math.PI*2); ctx.fill();
+    ctx.restore(); ctx.globalAlpha=1;
+  });
+
+  // 玩家
+  drawPlayer();
+
+  // 浮动伤害数字
+  floatingTexts.forEach(ft=>{
+    ctx.globalAlpha=Math.min(1,ft.life*2);
+    ctx.fillStyle=ft.color;
+    ctx.font='bold 13px Courier New';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('-'+ft.val, ft.x, ft.y);
+  });
+  ctx.globalAlpha=1;
+
+  // 准星
+  drawCrosshair();
+
+  ctx.restore();
+}
+
+function drawFloor() {
+  // 深色地板底色
+  ctx.fillStyle='#141414';
+  ctx.fillRect(0,0,W,H);
+  // 地砖
+  for(let gy=0;gy<Math.ceil(H/TILE)+1;gy++) {
+    for(let gx=0;gx<Math.ceil(W/TILE)+1;gx++) {
+      const dark=(gx+gy)%2===0;
+      ctx.fillStyle=dark?'#161616':'#181818';
+      ctx.fillRect(gx*TILE,gy*TILE,TILE,TILE);
+    }
+  }
+  // 网格线
+  ctx.strokeStyle='#1f1f1f'; ctx.lineWidth=0.5;
+  for(let gx=0;gx<=W;gx+=TILE){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();}
+  for(let gy=0;gy<=H;gy+=TILE){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}
+}
+
+function drawDeco(d) {
+  ctx.save();
+  ctx.translate(d.x,d.y); ctx.rotate(d.rot); ctx.scale(d.s,d.s);
+  if(d.type==='crate') {
+    ctx.fillStyle='#3a2e1a'; ctx.fillRect(-12,-12,24,24);
+    ctx.strokeStyle='#5a4a2a'; ctx.lineWidth=1;
+    ctx.strokeRect(-12,-12,24,24);
+    ctx.strokeStyle='#5a4a2a66'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(-12,-12); ctx.lineTo(12,12); ctx.moveTo(12,-12); ctx.lineTo(-12,12); ctx.stroke();
+  } else if(d.type==='barrel') {
+    ctx.fillStyle='#2a1810';
+    ctx.beginPath(); ctx.ellipse(0,0,8,10,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#633806'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.ellipse(0,0,8,10,0,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle='#63380666'; ctx.lineWidth=0.8;
+    [-4,0,4].forEach(dy=>{ctx.beginPath();ctx.ellipse(0,dy,8,2,0,0,Math.PI*2);ctx.stroke();});
+  } else {
+    ctx.fillStyle='#1a1a1a';
+    ctx.beginPath();
+    ctx.moveTo(-8,-5); ctx.lineTo(8,-3); ctx.lineTo(6,6); ctx.lineTo(-6,4); ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPlayer() {
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  // 无敌闪烁
+  if(player.invincible>0 && Math.floor(gameTime*24)%2===0) ctx.globalAlpha=0.35;
+
+  const walkBob = player.moving ? Math.sin(player.walkAnim)*3 : 0;
+  const legSwing = player.moving ? Math.sin(player.walkAnim)*0.45 : 0;
+  const aimAngle = player.facing;
+  const recoil = player.weaponAnim>0 ? Math.min(player.weaponAnim,0.08)*60 : 0;
+
+  ctx.rotate(aimAngle + Math.PI/2);
+
+  // 阴影
+  ctx.fillStyle='rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(0, 14+walkBob*0.3, 14,5,0,0,Math.PI*2); ctx.fill();
+
+  // 腿（左右）
+  const legColors = ['#0c3266','#0c3266'];
+  [-5,5].forEach((lx,i) => {
+    ctx.save();
+    ctx.translate(lx, 4+walkBob);
+    ctx.rotate(i===0 ? legSwing : -legSwing);
+    ctx.fillStyle=legColors[i];
+    ctx.fillRect(-3.5, 0, 7, 12);
+    // 鞋子
+    ctx.fillStyle='#2c2c2a';
+    ctx.fillRect(-4, 10, 8, 4);
+    ctx.restore();
+  });
+
+  // 身体（背心/战甲）
+  ctx.fillStyle='#185fa5';
+  ctx.beginPath();
+  ctx.roundRect(-9, -14+walkBob, 18, 20, 3);
+  ctx.fill();
+  // 战甲高光
+  ctx.fillStyle='#378add';
+  ctx.fillRect(-7,-12+walkBob,7,3);
+
+  // 头部
+  ctx.fillStyle='#f0d0a0';
+  ctx.beginPath(); ctx.arc(0, -18+walkBob, 8, 0, Math.PI*2); ctx.fill();
+  // 头盔
+  ctx.fillStyle='#185fa5';
+  ctx.beginPath(); ctx.arc(0, -20+walkBob, 8, Math.PI, Math.PI*2); ctx.fill();
+  ctx.fillRect(-8,-20+walkBob,16,4);
+  // 护目镜
+  ctx.fillStyle='#ef9f27';
+  [-3,3].forEach(ex=>{
+    ctx.beginPath(); ctx.arc(ex,-18+walkBob,2.5,0,Math.PI*2); ctx.fill();
+  });
+
+  // 武器
+  ctx.save();
+  ctx.translate(8, -8+walkBob);
+  ctx.translate(-recoil, 0); // 后坐力
+  drawWeaponSprite(player.weapon);
+  ctx.restore();
+
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+function drawWeaponSprite(wKey) {
+  const colors = { rifle:'#444', pistol:'#555', shotgun:'#3a2e1a', smg:'#333' };
+  const col = colors[wKey]||'#444';
+  if(wKey==='pistol') {
+    ctx.fillStyle=col; ctx.fillRect(0,-3,16,6); ctx.fillRect(2,3,6,5);
+  } else if(wKey==='shotgun') {
+    ctx.fillStyle=col; ctx.fillRect(0,-3,26,6); ctx.fillRect(0,-5,14,3);
+    ctx.fillStyle='#5a4a2a'; ctx.fillRect(10,-4,8,8);
+  } else if(wKey==='smg') {
+    ctx.fillStyle=col; ctx.fillRect(0,-3,20,6); ctx.fillRect(6,3,5,8);
+    ctx.fillStyle='#222'; ctx.fillRect(0,-5,10,2);
+  } else {
+    ctx.fillStyle=col; ctx.fillRect(0,-3,24,5); ctx.fillRect(20,-4,4,3);
+    ctx.fillStyle='#222'; ctx.fillRect(4,-5,12,2);
+  }
+  // 枪管
+  ctx.fillStyle='#2c2c2a';
+  const len={pistol:4,shotgun:6,smg:4,rifle:6}[wKey]||6;
+  ctx.fillRect(-len,-1.5,len,3);
+}
+
+function drawZombie(z) {
+  const alive = z.deathAnim===-1;
+  const dp = alive ? 0 : 1-(z.deathAnim/0.55);
+  ctx.save();
+  ctx.translate(z.x,z.y);
+  const scale = alive ? 1 : 1+dp*0.5;
+  ctx.scale(scale,scale);
+  ctx.globalAlpha = alive ? 1 : 1-dp;
+  if(alive && z.hitFlash>0) ctx.globalAlpha=0.4+Math.abs(Math.sin(z.hitFlash*50))*0.6;
+
+  ctx.rotate(z.angle+Math.PI/2);
+
+  const walkBob = Math.sin(z.walkAnim)*2.5;
+  const legSwing = Math.sin(z.walkAnim)*0.5;
+  const wobble = Math.sin(gameTime*3+z.wobble)*0.06;
+  ctx.rotate(wobble);
+
+  // 阴影
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(0,12,z.r*0.9,4,0,0,Math.PI*2); ctx.fill();
+
+  // 腿
+  const legCol = z.type==='tank'?'#1a1a1a':z.col+'aa';
+  [-z.r*0.35, z.r*0.35].forEach((lx,i)=>{
+    ctx.save(); ctx.translate(lx,z.r*0.3+walkBob*0.5);
+    ctx.rotate(i===0?legSwing:-legSwing);
+    ctx.fillStyle=legCol;
+    ctx.fillRect(-z.r*0.22,0,z.r*0.44,z.r*0.7);
+    ctx.fillStyle='#1a1a1a';
+    ctx.fillRect(-z.r*0.25,z.r*0.6,z.r*0.5,z.r*0.3);
+    ctx.restore();
+  });
+
+  // 身体
+  const bodyColors = { normal:'#2a4a10', fast:'#3a5a10', tank:'#1a1a18', spitter:'#2a1a4a', exploder:'#3a1a06' };
+  ctx.fillStyle=bodyColors[z.type]||'#2a4a10';
+  ctx.beginPath();
+  ctx.roundRect(-z.r*0.72,-z.r*0.8+walkBob, z.r*1.44, z.r*1.2, 3);
+  ctx.fill();
+  // 身体破损纹理
+  ctx.strokeStyle=z.col+'66'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(-z.r*0.4,-z.r*0.5+walkBob); ctx.lineTo(z.r*0.2,-z.r*0.1+walkBob); ctx.stroke();
+
+  // 头
+  const headCol = z.type==='tank'?'#1a1a18':z.col;
+  ctx.fillStyle=headCol;
+  ctx.beginPath();
+  if(z.type==='tank') ctx.rect(-z.r*0.6,-z.r*1.5+walkBob,z.r*1.2,z.r);
+  else ctx.arc(0,-z.r*1.0+walkBob,z.r*0.65,0,Math.PI*2);
+  ctx.fill();
+
+  // 眼睛（发红光）
+  const eyeCol = z.hitFlash>0 ? '#fff' : '#e24b4a';
+  ctx.fillStyle=eyeCol;
+  const eyeY = -z.r*1.0+walkBob;
+  [-z.r*0.25, z.r*0.25].forEach(ex=>{
+    ctx.beginPath(); ctx.arc(ex,eyeY,z.r*0.18,0,Math.PI*2); ctx.fill();
+  });
+  // 眼睛光晕
+  if(z.hitFlash<=0) {
+    ctx.fillStyle='#e24b4a33';
+    [-z.r*0.25, z.r*0.25].forEach(ex=>{
+      ctx.beginPath(); ctx.arc(ex,eyeY,z.r*0.35,0,Math.PI*2); ctx.fill();
+    });
+  }
+
+  // 手臂（朝向玩家的伸展）
+  const armCol = bodyColors[z.type]||'#2a4a10';
+  [-z.r*0.8, z.r*0.8].forEach((ax,i)=>{
+    ctx.save(); ctx.translate(ax,-z.r*0.3+walkBob);
+    ctx.rotate(i===0?-0.4:0.4);
+    ctx.fillStyle=armCol;
+    ctx.fillRect(-z.r*0.18,0,z.r*0.36,z.r*0.85);
+    ctx.restore();
+  });
+
+  // 坦克特殊装饰
+  if(z.type==='tank') {
+    ctx.fillStyle='#333';
+    ctx.fillRect(-z.r*0.8,-z.r*0.6+walkBob,z.r*1.6,z.r*0.3);
+  }
+  // 吐酸特殊
+  if(z.type==='spitter') {
+    ctx.fillStyle='#63c4a0';
+    ctx.beginPath(); ctx.arc(0,-z.r*0.5+walkBob,z.r*0.3,0,Math.PI*2); ctx.fill();
+  }
+  // 爆炸特殊
+  if(z.type==='exploder') {
+    ctx.fillStyle='#ef9f2788';
+    const pulse=Math.abs(Math.sin(gameTime*5))*z.r*0.4;
+    ctx.beginPath(); ctx.arc(0,-z.r*0.4+walkBob,z.r*0.5+pulse,0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore(); ctx.globalAlpha=1;
+
+  // 血条
+  if(alive) {
+    const bw=z.r*2.8, bx=z.x-bw/2, by=z.y-z.r*scale-10;
+    ctx.fillStyle='#222'; ctx.fillRect(bx,by,bw,4);
+    const pct=Math.max(0,z.hp/z.maxHp);
+    ctx.fillStyle=pct>0.6?'#639922':pct>0.3?'#ef9f27':'#e24b4a';
+    ctx.fillRect(bx,by,bw*pct,4);
+  }
+}
+
+function drawCrosshair() {
+  const cx=mouse.x, cy=mouse.y;
+  const spread = WEAPONS[player.weapon].spread*200*(player.weaponAnim>0?2:1);
+  ctx.strokeStyle='rgba(255,255,255,0.75)'; ctx.lineWidth=1.2;
+  const gap=6+spread;
+  ctx.beginPath(); ctx.moveTo(cx-gap-10,cy); ctx.lineTo(cx-gap,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+gap,cy); ctx.lineTo(cx+gap+10,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy-gap-10); ctx.lineTo(cx,cy-gap); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy+gap); ctx.lineTo(cx,cy+gap+10); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.25)';
+  ctx.beginPath(); ctx.arc(cx,cy,3+spread,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.arc(cx,cy,1.5,0,Math.PI*2); ctx.fill();
+}
+
+/* ── HUD ── */
+function updateHUD() {
+  const pct=Math.max(0,player.hp/player.maxHp*100);
+  document.getElementById('healthFill').style.width=pct+'%';
+  document.getElementById('healthFill').style.background=pct>50?'#639922':pct>25?'#ef9f27':'#e24b4a';
+  document.getElementById('healthNum').textContent=Math.max(0,Math.round(player.hp));
+  document.getElementById('scoreNum').textContent=score;
+
+  const wp=WEAPONS[player.weapon];
+  document.getElementById('weaponName').textContent=wp.name;
+  const ad=document.getElementById('ammoDisplay');
+  ad.innerHTML='';
+  for(let i=0;i<wp.maxAmmo;i++){
+    const d=document.createElement('div');
+    d.className='ammo-bullet';
+    d.style.background=i<player.ammo?wp.color:'#222';
+    ad.appendChild(d);
+  }
+  document.getElementById('ammoNum').textContent=player.ammo+' / '+player.reserve;
+  if(player.reloading){
+    document.getElementById('reloadBar').style.display='block';
+  }
+}
+
+/* ── 结束 / 开始 ── */
+function endGame() {
+  state='gameover';
+  cancelAnimationFrame(gameLoopId);
+  document.getElementById('overlay').classList.remove('hidden');
+  document.querySelector('.ov-title').textContent='游戏结束';
+  document.querySelector('.ov-sub').textContent='GAME  OVER';
+  const fs=document.getElementById('finalScore');
+  fs.style.display='block';
+  fs.textContent='得分 '+score+' ｜ 波次 '+wave+' ｜ 击杀 '+player.kills;
+  document.getElementById('startBtn').textContent='再来一局';
+}
+function startGame() {
+  state='playing';
+  score=0;wave=1;particles=[];bloodSplats=[];muzzleFlashes=[];
+  enemyBullets=[];pickups=[];bullets=[];zombies=[];floatingTexts=[];
+  gameTime=0;waveDelay=0;waveActive=false;screenShake={x:0,y:0,t:0};
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('waveNum').textContent=1;
+  document.getElementById('finalScore').style.display='none';
+  document.getElementById('killFeed').innerHTML='';
+  document.getElementById('reloadBar').style.display='none';
+  genDeco();
+  initPlayer();
+  startWave(1);
+  lastTime=performance.now();
+  gameLoopId=requestAnimationFrame(gameLoop);
+}
+
+/* ── 事件 ── */
+canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;});
+canvas.addEventListener('mousedown',e=>{if(e.button===0)mouse.down=true;});
+canvas.addEventListener('mouseup',e=>{if(e.button===0)mouse.down=false;});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('keydown',e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(state==='playing') {
+    if(e.key.toLowerCase()==='r') startReload();
+    if(e.key.toLowerCase()==='q') cycleWeapon();
+  }
+  e.preventDefault();
+});
+document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+document.getElementById('startBtn').addEventListener('click',startGame);
+
+// 首次绘制背景
+(function initDraw(){
+  ctx.fillStyle='#141414'; ctx.fillRect(0,0,W,H);
+})();
+updateHUD();
+</script>
+</body>
+</html>

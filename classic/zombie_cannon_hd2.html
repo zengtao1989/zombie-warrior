@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>向僵尸开炮 - 精致版</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="C"></canvas>
+<script>
+"use strict";
+var G = {
+  W: 1000, H: 600,
+  state: 'playing', wave: 0, gold: 800, hp: 20,
+  cannons: [], bullets: [], zombies: [], particles: [], floatTexts: [],
+  spawnTimer: 0, spawnCount: 0, spawnTotal: 0,
+  waveActive: false, waveDelay: 0,
+  lastTime: 0, selectedCannon: null, shopOpen: false,
+  mouseX: 500, mouseY: 300,
+  shakeTimer: 0, shakePow: 0,
+  ups: {}, hoverBtn: null,
+  stars: [], clouds: [],
+  lightFlash: 0
+};
+
+var C = document.getElementById('C');
+var X = C.getContext('2d');
+C.width = G.W; C.height = G.H;
+
+/* ========= 工具函数 ========= */
+function rr(x, y, w, h, r) {
+  X.beginPath();
+  X.moveTo(x + r, y);
+  X.lineTo(x + w - r, y);
+  X.quadraticCurveTo(x + w, y, x + w, y + r);
+  X.lineTo(x + w, y + h - r);
+  X.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  X.lineTo(x + r, y + h);
+  X.quadraticCurveTo(x, y + h, x, y + h - r);
+  X.lineTo(x, y + r);
+  X.quadraticCurveTo(x, y, x + r, y);
+  X.closePath();
+}
+
+function dist(x1, y1, x2, y2) {
+  var dx = x2 - x1, dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/* ========= 星空 ========= */
+function initStars() {
+  G.stars = [];
+  for (var i = 0; i < 90; i++) {
+    G.stars.push({
+      x: Math.random() * G.W,
+      y: Math.random() * 250,
+      r: 0.4 + Math.random() * 1.8,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+initStars();
+
+function initClouds() {
+  G.clouds = [];
+  for (var i = 0; i < 5; i++) {
+    G.clouds.push({
+      x: Math.random() * G.W,
+      y: 40 + Math.random() * 90,
+      w: 100 + Math.random() * 140,
+      speed: 0.08 + Math.random() * 0.15,
+      alpha: 0.04 + Math.random() * 0.07
+    });
+  }
+}
+initClouds();
+
+/* ========= 炮台模板 ========= */
+var CT = [
+  { id: 0, name: '手枪炮',  dmg: 10, rate: 450, rng: 200, spd: 5,   cost: 0,    color: '#42a5f5', glow: '#90caf9' },
+  { id: 1, name: '散弹炮',  dmg: 30, rate: 1000, rng: 160, spd: 4,   cost: 350,  color: '#ffa726', glow: '#ffcc80' },
+  { id: 2, name: '机枪炮',  dmg: 7,  rate: 90,  rng: 220, spd: 6,   cost: 550,  color: '#66bb6a', glow: '#a5d6a7' },
+  { id: 3, name: '火箭炮',  dmg: 70, rate: 1800, rng: 240, spd: 3,   cost: 850,  color: '#ef5350', glow: '#ef9a9a' },
+  { id: 4, name: '激光炮',  dmg: 50, rate: 60,  rng: 300, spd: 0,   cost: 1300, color: '#ab47bc', glow: '#ce93d8' },
+  { id: 5, name: '冰霜炮',  dmg: 6,  rate: 300, rng: 190, spd: 5,   cost: 650,  color: '#26c6da', glow: '#80deea' },
+];
+
+/* ========= 僵尸模板 ========= */
+var ZT = [
+  { id: 0, name: '普通僵尸', hp: 70,  spd: 0.6,  reward: 12, body: '#6d4c41', cloth: '#4e342e', eyes: '#ff1744' },
+  { id: 1, name: '快速僵尸', hp: 45,  spd: 1.3,  reward: 15, body: '#8d6e63', cloth: '#5d4037', eyes: '#ff5252' },
+  { id: 2, name: '坦克僵尸', hp: 400, spd: 0.28, reward: 60, body: '#3e2723', cloth: '#212121', eyes: '#d50000' },
+  { id: 3, name: '飞行僵尸', hp: 55,  spd: 0.9,  reward: 18, body: '#ff8a65', cloth: '#e64a19', eyes: '#ff6d00', fly: true },
+  { id: 4, name: 'BOSS僵尸', hp: 1800, spd: 0.2,  reward: 300, body: '#b71c1c', cloth: '#7f0000', eyes: '#ff0000' },
+];
+
+/* ========= 炮台槽位 ========= */
+function initCannons() {
+  var slots = [
+    { x: 100, y: 130 }, { x: 100, y: 300 }, { x: 100, y: 470 },
+    { x: 290, y: 110 }, { x: 290, y: 280 }, { x: 290, y: 450 },
+    { x: 480, y: 170 }, { x: 480, y: 350 },
+    { x: 670, y: 230 }, { x: 670, y: 410 },
+  ];
+  G.cannons = [];
+  for (var i = 0; i < slots.length; i++) {
+    G.cannons.push({
+      x: slots[i].x, y: slots[i].y,
+      type: i < 2 ? 0 : -1,
+      angle: 0, timer: 0, level: 1, kills: 0,
+      uid: (i < 2) ? ('c_' + i) : null,
+      animFire: 0,
+    });
+  }
+}
+initCannons();
+
+/* ========= 升级系统 ========= */
+var UE = {
+  d: { pv: 7,  c0: 80,  ci: 50,  label: '伤害' },
+  r: { pv: 75, c0: 100, ci: 60,  label: '射速' },
+  g: { pv: 28, c0: 120, ci: 70,  label: '范围' },
+  e: { pv: 12, c0: 140, ci: 100, label: '爆炸' },
+};
+
+function getUpgs(c) {
+  return G.ups[c.uid] || { d: { lv: 0 }, r: { lv: 0 }, g: { lv: 0 }, e: { lv: 0 } };
+}
+
+function applyUpgs() {
+  for (var i = 0; i < G.cannons.length; i++) {
+    var c = G.cannons[i];
+    if (c.type < 0 || !c.uid) continue;
+    var t = CT[c.type];
+    if (!t) continue;
+    var u = G.ups[c.uid];
+    if (!u) { G.ups[c.uid] = { d: { lv: 0 }, r: { lv: 0 }, g: { lv: 0 }, e: { lv: 0 } }; u = G.ups[c.uid]; }
+    c._dmg = t.dmg + UE.d.pv * u.d.lv;
+    c._rate = Math.max(45, t.rate - UE.r.pv * u.r.lv);
+    c._rng = t.rng + UE.g.pv * u.g.lv;
+    c._exp = UE.e.pv * u.e.lv;
+  }
+}
+
+/* ========= 僵尸生成 ========= */
+function spawnZ(type) {
+  var t = ZT[type];
+  var scale = 1 + G.wave * 0.12;
+  var z = {
+    x: G.W + 30 + Math.random() * 50,
+    y: 90 + Math.floor(Math.random() * 5) * 100 + 35,
+    hp: t.hp * scale,
+    maxHp: t.hp * scale,
+    spd: t.spd * (1 + G.wave * 0.02),
+    reward: t.reward,
+    type: type,
+    bodyC: t.body, clothC: t.cloth, eyeC: t.eyes,
+    fly: !!t.fly, alive: true, flash: 0, slow: 0,
+    walkFrame: 0, wobble: Math.random() * Math.PI * 2
+  };
+  if (type === 2) z.sz = 22;
+  else if (type === 4) z.sz = 30;
+  else z.sz = 14;
+  return z;
+}
+
+function startWave() {
+  G.wave++;
+  G.spawnTotal = Math.min(6 + G.wave * 3 + Math.floor(G.wave / 3) * 2, 50);
+  G.spawnCount = 0;
+  G.spawnTimer = 0;
+  G.waveActive = true;
+  if (G.wave % 5 === 0) G.zombies.push(spawnZ(4));
+}
+
+/* ========= 绘制：天空 ========= */
+function drawSky() {
+  var sg = X.createLinearGradient(0, 0, 0, G.H);
+  sg.addColorStop(0, '#0b0b24');
+  sg.addColorStop(0.35, '#151545');
+  sg.addColorStop(0.65, '#1a1050');
+  sg.addColorStop(1, '#10082e');
+  X.fillStyle = sg;
+  X.fillRect(0, 0, G.W, G.H);
+
+  // 星星
+  var t = Date.now() * 0.001;
+  for (var i = 0; i < G.stars.length; i++) {
+    var s = G.stars[i];
+    var a = 0.3 + 0.7 * Math.abs(Math.sin(t * 1.5 + s.phase));
+    X.fillStyle = 'rgba(255,255,255,' + a.toFixed(2) + ')';
+    X.beginPath();
+    X.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    X.fill();
+  }
+
+  // 月亮
+  X.save();
+  X.fillStyle = '#fffde7';
+  X.shadowColor = '#fff9c4';
+  X.shadowBlur = 28;
+  X.beginPath();
+  X.arc(G.W - 120, 65, 32, 0, Math.PI * 2);
+  X.fill();
+  X.shadowBlur = 0;
+  X.fillStyle = '#0b0b24';
+  X.beginPath();
+  X.arc(G.W - 105, 58, 28, 0, Math.PI * 2);
+  X.fill();
+  X.restore();
+
+  // 云
+  for (var i = 0; i < G.clouds.length; i++) {
+    var c = G.clouds[i];
+    c.x += c.speed;
+    if (c.x > G.W + c.w) c.x = -c.w;
+    X.fillStyle = 'rgba(180,180,255,' + c.alpha + ')';
+    X.beginPath(); X.ellipse(c.x, c.y, c.w * 0.5, 12, 0, 0, Math.PI * 2); X.fill();
+    X.beginPath(); X.ellipse(c.x - c.w * 0.18, c.y - 5, c.w * 0.28, 9, 0, 0, Math.PI * 2); X.fill();
+    X.beginPath(); X.ellipse(c.x + c.w * 0.18, c.y - 3, c.w * 0.22, 7, 0, 0, Math.PI * 2); X.fill();
+  }
+
+  // 远景城市剪影
+  X.fillStyle = '#0a0620';
+  for (var i = 0; i < 25; i++) {
+    var bx = i * 42;
+    var bh = 30 + Math.sin(i * 1.5) * 25 + Math.cos(i * 0.7) * 18;
+    X.fillRect(bx, G.H - 155 - bh, 32, bh + 50);
+    if (i % 4 === 0) {
+      X.fillStyle = 'rgba(255,200,100,0.12)';
+      X.fillRect(bx + 6, G.H - 155 - bh + 4, 5, 7);
+      X.fillStyle = '#0a0620';
+    }
+  }
+}
+
+function drawGround() {
+  var gg = X.createLinearGradient(0, G.H - 145, 0, G.H);
+  gg.addColorStop(0, '#1e1008');
+  gg.addColorStop(0.4, '#2a1810');
+  gg.addColorStop(1, '#0d0600');
+  X.fillStyle = gg;
+  X.fillRect(0, G.H - 145, G.W, 145);
+
+  // 道路
+  var rg = X.createLinearGradient(0, G.H - 145, 0, G.H - 95);
+  rg.addColorStop(0, '#3a3a3a');
+  rg.addColorStop(0.5, '#4a4a4a');
+  rg.addColorStop(1, '#383838');
+  X.fillStyle = rg;
+  X.fillRect(0, G.H - 145, G.W, 50);
+
+  // 车道虚线
+  X.strokeStyle = 'rgba(255,200,50,0.12)';
+  X.lineWidth = 1;
+  X.setLineDash([18, 28]);
+  X.beginPath(); X.moveTo(0, G.H - 120); X.lineTo(G.W, G.H - 120); X.stroke();
+  X.setLineDash([]);
+
+  // 路边石
+  X.fillStyle = '#4e342e';
+  X.fillRect(0, G.H - 147, G.W, 3);
+  X.fillStyle = '#5d4037';
+  X.fillRect(0, G.H - 95, G.W, 2);
+
+  // 草地
+  var g2 = X.createLinearGradient(0, G.H - 93, 0, G.H);
+  g2.addColorStop(0, '#0f2a0f');
+  g2.addColorStop(1, '#051505');
+  X.fillStyle = g2;
+  X.fillRect(0, G.H - 93, G.W, 93);
+
+  // 草丛
+  X.fillStyle = 'rgba(56,142,60,0.18)';
+  for (var i = 0; i < G.W; i += 22) {
+    var gh = 3 + Math.sin(i * 0.5 + Date.now() * 0.001) * 2.5;
+    X.fillRect(i, G.H - 93 - gh, 2.5, gh);
+  }
+}
+
+/* ========= 绘制：炮台 ========= */
+function drawCannonBody(c) {
+  if (c.type < 0) {
+    X.strokeStyle = 'rgba(255,255,255,0.1)';
+    X.lineWidth = 1.5;
+    X.setLineDash([7, 5]);
+    rr(c.x - 28, c.y - 28, 56, 56, 8);
+    X.stroke();
+    X.setLineDash([]);
+    X.strokeStyle = 'rgba(255,255,255,0.13)';
+    X.lineWidth = 1;
+    X.beginPath();
+    X.moveTo(c.x - 8, c.y); X.lineTo(c.x + 8, c.y);
+    X.moveTo(c.x, c.y - 8); X.lineTo(c.x, c.y + 8);
+    X.stroke();
+    return;
+  }
+  var t = CT[c.type];
+  if (!t) return;
+  var cx = c.x, cy = c.y;
+
+  X.save();
+  X.translate(cx, cy);
+
+  var recoil = c.animFire > 0 ? 2 : 0;
+  if (c.animFire > 0) c.animFire--;
+
+  // 阴影
+  X.fillStyle = 'rgba(0,0,0,0.35)';
+  X.beginPath(); X.ellipse(1, 25, 22, 7, 0, 0, Math.PI * 2); X.fill();
+
+  // 底座
+  var bg = X.createRadialGradient(-4, -4, 3, 0, 0, 25);
+  bg.addColorStop(0, '#78909c');
+  bg.addColorStop(0.6, '#546e7a');
+  bg.addColorStop(1, '#263238');
+  X.fillStyle = bg;
+  X.beginPath(); X.arc(0, 0, 23, 0, Math.PI * 2); X.fill();
+
+  // 底座高光
+  X.fillStyle = 'rgba(255,255,255,0.1)';
+  X.beginPath(); X.arc(-7, -9, 11, Math.PI * 1.1, Math.PI * 1.95); X.fill();
+
+  // 旋转盘
+  X.strokeStyle = '#455a64';
+  X.lineWidth = 1;
+  X.strokeStyle = '#546e7a';
+  X.beginPath(); X.arc(0, 0, 15, 0, Math.PI * 2); X.stroke();
+
+  // 炮管
+  X.rotate(c.angle);
+  X.translate(recoil, 0);
+
+  // 炮管主体
+  var mg = X.createLinearGradient(0, -6, 0, 6);
+  mg.addColorStop(0, t.glow);
+  mg.addColorStop(0.4, t.color);
+  mg.addColorStop(1, '#1a1a1a');
+  X.fillStyle = mg;
+  rr(0, -5, 34, 10, 3);
+  X.fill();
+
+  // 炮管高光
+  X.fillStyle = 'rgba(255,255,255,0.22)';
+  X.fillRect(2, -4, 28, 2.5);
+
+  // 炮口
+  X.fillStyle = '#111';
+  X.beginPath(); X.arc(34, 0, 5, 0, Math.PI * 2); X.fill();
+  X.fillStyle = t.glow;
+  X.beginPath(); X.arc(34, 0, 3, 0, Math.PI * 2); X.fill();
+
+  // 开火闪光
+  if (c.animFire > 8) {
+    X.fillStyle = 'rgba(255,200,50,0.75)';
+    X.beginPath(); X.arc(36, 0, 5 + Math.random() * 3, 0, Math.PI * 2); X.fill();
+    X.fillStyle = 'rgba(255,100,0,0.5)';
+    X.beginPath(); X.arc(38, 0, 3 + Math.random() * 2, 0, Math.PI * 2); X.fill();
+  }
+
+  X.restore();
+
+  // 等级星星
+  for (var s = 0; s < Math.min(c.level, 5); s++) {
+    X.fillStyle = '#ffd600';
+    X.shadowColor = '#ffd600';
+    X.shadowBlur = 3;
+    X.beginPath(); X.arc(c.x - 10 + s * 5.5, c.y + 27, 2.2, 0, Math.PI * 2); X.fill();
+    X.shadowBlur = 0;
+  }
+
+  // 选中发光圈
+  if (G.selectedCannon === c) {
+    X.strokeStyle = 'rgba(255,255,255,0.18)';
+    X.lineWidth = 1;
+    X.setLineDash([3, 5]);
+    X.beginPath(); X.arc(c.x, c.y, c._rng || CT[c.type].rng, 0, Math.PI * 2); X.stroke();
+    X.setLineDash([]);
+  }
+}
+
+/* ========= 绘制：僵尸 ========= */
+function drawZombie(z) {
+  if (!z.alive) return;
+  X.save();
+  X.translate(z.x, z.y);
+
+  z.wobble += 0.09;
+  z.walkFrame += 0.07;
+  var wob = Math.sin(z.wobble) * 1.5;
+
+  // 阴影
+  X.fillStyle = 'rgba(0,0,0,0.3)';
+  X.beginPath(); X.ellipse(0, z.sz + 5, z.sz * 0.85, 4, 0, 0, Math.PI * 2); X.fill();
+
+  if (z.fly) {
+    // 飞行僵尸
+    var fy = Math.sin(Date.now() * 0.004) * 4;
+    X.translate(0, fy);
+
+    var fg = X.createRadialGradient(-2, -2, 2, 0, 0, z.sz);
+    fg.addColorStop(0, '#ffab91'); fg.addColorStop(1, z.bodyC);
+    X.fillStyle = fg;
+    X.beginPath(); X.arc(0, 0, z.sz, 0, Math.PI * 2); X.fill();
+
+    // 翅膀
+    X.fillStyle = 'rgba(255,138,101,0.45)';
+    var wf = Math.sin(Date.now() * 0.011) * 0.25;
+    X.save(); X.rotate(-0.35 + wf);
+    X.beginPath(); X.ellipse(-z.sz - 5, -3, 11, 20, -0.25, 0, Math.PI * 2); X.fill();
+    X.restore();
+    X.save(); X.rotate(0.35 - wf);
+    X.beginPath(); X.ellipse(z.sz + 5, -3, 11, 20, 0.25, 0, Math.PI * 2); X.fill();
+    X.restore();
+  } else {
+    // 行走动画
+    var la = Math.sin(z.walkFrame) * 4;
+    // 腿
+    X.fillStyle = z.clothC;
+    X.fillRect(-5, z.sz - 2, 4, 9 + la * 0.3);
+    X.fillRect(1, z.sz - 2, 4, 9 - la * 0.3);
+    // 身体
+    var zbg = X.createLinearGradient(-z.sz * 0.6, -z.sz * 0.3, z.sz * 0.6, z.sz * 0.4);
+    zbg.addColorStop(0, z.clothC); zbg.addColorStop(1, z.bodyC);
+    X.fillStyle = zbg;
+    X.beginPath();
+    X.moveTo(-z.sz * 0.65, -z.sz * 0.2);
+    X.lineTo(z.sz * 0.65, -z.sz * 0.2);
+    X.lineTo(z.sz * 0.45, z.sz * 0.55);
+    X.lineTo(-z.sz * 0.45, z.sz * 0.55);
+    X.closePath(); X.fill();
+    // 手臂
+    var aa = Math.sin(z.walkFrame) * 12 * Math.PI / 180;
+    X.fillStyle = z.bodyC;
+    X.save(); X.translate(-z.sz * 0.55, -z.sz * 0.05); X.rotate(aa);
+    X.fillRect(-1.5, 0, 3, z.sz * 0.55); X.restore();
+    X.save(); X.translate(z.sz * 0.55, -z.sz * 0.05); X.rotate(-aa);
+    X.fillRect(-1.5, 0, 3, z.sz * 0.55); X.restore();
+  }
+
+  // 头部
+  var hg = X.createRadialGradient(-1, -z.sz * 0.85 - 2, 1, 0, -z.sz * 0.85, z.sz * 0.5);
+  hg.addColorStop(0, '#a1887f'); hg.addColorStop(1, z.bodyC);
+  X.fillStyle = hg;
+  X.beginPath(); X.arc(0, -z.sz * 0.85, z.sz * 0.52, 0, Math.PI * 2); X.fill();
+
+  // 受击闪白
+  if (z.flash > 0) {
+    X.fillStyle = 'rgba(255,255,255,0.55)';
+    X.beginPath(); X.arc(0, -z.sz * 0.85, z.sz * 0.52, 0, Math.PI * 2); X.fill();
+    z.flash -= 0.5;
+  }
+
+  // 眼睛
+  X.fillStyle = z.eyeC;
+  X.shadowColor = z.eyeC; X.shadowBlur = 5;
+  X.beginPath(); X.arc(-2.5, -z.sz * 0.9, 2.2, 0, Math.PI * 2); X.fill();
+  X.beginPath(); X.arc(2.5, -z.sz * 0.9, 2.2, 0, Math.PI * 2); X.fill();
+  X.shadowBlur = 0;
+
+  // 嘴巴
+  X.strokeStyle = '#3e2723'; X.lineWidth = 1.2;
+  X.beginPath(); X.arc(0, -z.sz * 0.72, 3.5, 0.15, Math.PI - 0.15); X.stroke();
+
+  // 冻结效果
+  if (z.slow > 0) {
+    X.strokeStyle = 'rgba(77,208,225,0.55)'; X.lineWidth = 1.5;
+    X.beginPath(); X.arc(0, 0, z.sz + 3, 0, Math.PI * 2); X.stroke();
+    z.slow--;
+  }
+
+  X.restore();
+
+  // 血条
+  var bw = z.sz * 2.2, bh = 3.5;
+  var bx = z.x - bw / 2, by = z.y - z.sz - 12;
+  X.fillStyle = '#111'; X.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+  X.fillStyle = '#2a2a2a'; X.fillRect(bx, by, bw, bh);
+  var ratio = Math.max(0, z.hp / z.maxHp);
+  var hc = ratio > 0.5 ? '#4caf50' : (ratio > 0.25 ? '#ff9800' : '#f44336');
+  X.fillStyle = hc; X.fillRect(bx, by, bw * ratio, bh);
+  X.fillStyle = 'rgba(255,255,255,0.25)'; X.fillRect(bx, by, bw * ratio, 1.5);
+}
+
+/* ========= 绘制：子弹 ========= */
+function drawBullet(b) {
+  X.save();
+  X.translate(b.x, b.y);
+
+  if (b.isLaser) {
+    X.strokeStyle = 'rgba(171,71,188,0.7)';
+    X.lineWidth = 3;
+    X.shadowColor = '#e040fb'; X.shadowBlur = 10;
+    X.beginPath(); X.moveTo(-6, 0); X.lineTo(6, 0); X.stroke();
+    X.strokeStyle = 'rgba(255,255,255,0.6)';
+    X.lineWidth = 1;
+    X.beginPath(); X.moveTo(-6, 0); X.lineTo(6, 0); X.stroke();
+    X.shadowBlur = 0;
+  } else {
+    // 外层光晕
+    var lg = X.createRadialGradient(0, 0, 0, 0, 0, b.r * 3);
+    lg.addColorStop(0, b.color || '#fff');
+    lg.addColorStop(0.4, (b.color || '#fff') + '66');
+    lg.addColorStop(1, 'transparent');
+    X.fillStyle = lg;
+    X.beginPath(); X.arc(0, 0, b.r * 3, 0, Math.PI * 2); X.fill();
+    // 核心
+    X.fillStyle = '#fff';
+    X.beginPath(); X.arc(0, 0, b.r, 0, Math.PI * 2); X.fill();
+    // 拖尾
+    if (Math.random() < 0.4) {
+      G.particles.push({
+        x: b.x - b.vx * 0.4, y: b.y - b.vy * 0.4,
+        vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4,
+        life: 5, maxLife: 5, color: b.color || '#fff', sz: b.r * 0.5
+      });
+    }
+  }
+  X.restore();
+}
+
+/* ========= 粒子 ========= */
+function updateAndDrawParticles() {
+  for (var i = G.particles.length - 1; i >= 0; i--) {
+    var p = G.particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.05;
+    p.life--;
+    if (p.life <= 0) { G.particles.splice(i, 1); continue; }
+    var a = p.life / p.maxLife;
+    X.globalAlpha = a;
+    var pg = X.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.sz * a);
+    pg.addColorStop(0, p.color); pg.addColorStop(1, 'transparent');
+    X.fillStyle = pg;
+    X.beginPath(); X.arc(p.x, p.y, p.sz * a, 0, Math.PI * 2); X.fill();
+  }
+  X.globalAlpha = 1;
+}
+
+/* ========= 爆炸 ========= */
+function spawnExplosion(ex, ey, r, dmg) {
+  // 闪光
+  G.lightFlash = 6;
+  // 火花粒子
+  var colors = ['#ff9800', '#ff5722', '#ffc107', '#ff6d00', '#fff176'];
+  for (var i = 0; i < 18; i++) {
+    var a = Math.random() * Math.PI * 2;
+    var s = 1.5 + Math.random() * 4.5;
+    G.particles.push({
+      x: ex, y: ey,
+      vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: 15 + Math.random() * 18, maxLife: 33,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      sz: 2.5 + Math.random() * 4
+    });
+  }
+  // 烟雾
+  for (var i = 0; i < 6; i++) {
+    var a = Math.random() * Math.PI * 2;
+    var s = 0.5 + Math.random() * 1.5;
+    G.particles.push({
+      x: ex, y: ey,
+      vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.4,
+      life: 20 + Math.random() * 25, maxLife: 45,
+      color: 'rgba(100,100,100,', sz: 5 + Math.random() * 7, isSmoke: true
+    });
+  }
+  G.shakeTimer = 7; G.shakePow = 4;
+
+  for (var j = 0; j < G.zombies.length; j++) {
+    var z = G.zombies[j];
+    if (!z.alive) continue;
+    var d = dist(ex, ey, z.x, z.y);
+    if (d < r) {
+      z.hp -= dmg;
+      z.flash = 4;
+      if (z.hp <= 0) { z.alive = false; G.gold += z.reward; spawnKillEffect(z); }
+    }
+  }
+}
+
+function spawnKillEffect(z) {
+  for (var i = 0; i < 10; i++) {
+    var a = Math.random() * Math.PI * 2;
+    var s = 0.8 + Math.random() * 2.5;
+    G.particles.push({
+      x: z.x, y: z.y,
+      vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: 12 + Math.random() * 10, maxLife: 22,
+      color: z.bodyC, sz: 1.5 + Math.random() * 3
+    });
+  }
+  G.floatTexts.push({ x: z.x, y: z.y, text: '+' + z.reward, life: 40, vy: -1.5, color: '#ffd600' });
+}
+
+/* ========= 浮动文字 ========= */
+function drawFloatTexts() {
+  for (var i = G.floatTexts.length - 1; i >= 0; i--) {
+    var ft = G.floatTexts[i];
+    ft.y += ft.vy; ft.life--;
+    if (ft.life <= 0) { G.floatTexts.splice(i, 1); continue; }
+    X.globalAlpha = Math.min(1, ft.life / 8);
+    X.fillStyle = ft.color || '#fff';
+    X.font = 'bold 13px sans-serif';
+    X.textAlign = 'center';
+    X.fillText(ft.text, ft.x, ft.y);
+  }
+  X.globalAlpha = 1;
+}
+
+/* ========= HUD ========= */
+function drawHUD() {
+  // 顶栏背景
+  var hg = X.createLinearGradient(0, 0, 0, 46);
+  hg.addColorStop(0, 'rgba(8,8,25,0.95)');
+  hg.addColorStop(1, 'rgba(8,8,25,0.7)');
+  X.fillStyle = hg;
+  X.fillRect(0, 0, G.W, 46);
+  X.strokeStyle = 'rgba(80,80,180,0.25)'; X.lineWidth = 1;
+  X.beginPath(); X.moveTo(0, 46); X.lineTo(G.W, 46); X.stroke();
+
+  X.textAlign = 'left'; X.font = 'bold 16px sans-serif';
+
+  // 金币
+  X.fillStyle = '#ffd600';
+  X.shadowColor = '#ffd600'; X.shadowBlur = 5;
+  X.fillText('💰 ' + G.gold, 16, 29);
+  X.shadowBlur = 0;
+
+  // 波次
+  X.fillStyle = '#e0e0e0'; X.font = '14px sans-serif';
+  X.fillText('第 ' + G.wave + ' 波', 175, 29);
+
+  // 生命
+  X.fillStyle = '#ef5350';
+  X.shadowColor = '#ef5350'; X.shadowBlur = 4;
+  X.fillText('❤ ' + G.hp, 330, 29);
+  X.shadowBlur = 0;
+
+  // 僵尸剩余
+  var az = 0; for (var i = 0; i < G.zombies.length; i++) if (G.zombies[i].alive) az++;
+  X.fillStyle = '#999'; X.font = '13px sans-serif';
+  X.fillText('剩余: ' + az, 455, 29);
+
+  // 开始波次按钮
+  if (!G.waveActive && G.waveDelay <= 0) {
+    var hov = G.hoverBtn === 'start';
+    var rg = X.createLinearGradient(G.W - 168, 0, G.W - 168, 34);
+    rg.addColorStop(0, hov ? '#66bb6a' : '#4caf50');
+    rg.addColorStop(1, hov ? '#388e3c' : '#2e7d32');
+    X.fillStyle = rg;
+    X.shadowColor = '#4caf50'; X.shadowBlur = hov ? 10 : 4;
+    rr(G.W - 168, 6, 152, 30, 6);
+    X.fill(); X.shadowBlur = 0;
+    X.fillStyle = '#fff'; X.font = 'bold 13px sans-serif'; X.textAlign = 'center';
+    X.fillText('▶ 开始波次', G.W - 92, 26);
+  }
+  if (G.waveDelay > 0) {
+    X.fillStyle = 'rgba(255,255,255,0.5)'; X.font = '12px sans-serif'; X.textAlign = 'center';
+    X.fillText('下波 ' + Math.ceil(G.waveDelay / 60) + 's', G.W - 92, 26);
+  }
+
+  // 商店按钮
+  var hov2 = G.hoverBtn === 'shop';
+  X.fillStyle = hov2 ? 'rgba(100,100,220,0.45)' : 'rgba(100,100,220,0.25)';
+  rr(12, 52, 86, 26, 5); X.fill();
+  X.fillStyle = '#c5cae9'; X.font = '12px sans-serif'; X.textAlign = 'center';
+  X.fillText('🏪 商店(B)', 55, 70);
+}
+
+/* ========= 商店 ========= */
+function drawShop() {
+  if (!G.shopOpen) return;
+  X.fillStyle = 'rgba(0,0,0,0.6)';
+  X.fillRect(0, 0, G.W, G.H);
+
+  var px = 50, py = 25, pw = G.W - 100, ph = G.H - 50;
+  X.fillStyle = '#0a0e22';
+  X.strokeStyle = '#252555'; X.lineWidth = 2;
+  rr(px, py, pw, ph, 12); X.fill(); X.stroke();
+
+  X.fillStyle = '#d0d0ff'; X.font = 'bold 20px sans-serif'; X.textAlign = 'center';
+  X.fillText('🏪 武器商店', G.W / 2, py + 32);
+
+  for (var i = 0; i < CT.length; i++) {
+    var t = CT[i];
+    var col = i % 3, row = Math.floor(i / 3);
+    var bx = px + 30 + col * 290;
+    var by = py + 50 + row * 125;
+
+    var canBuy = G.gold >= t.cost;
+    X.fillStyle = canBuy ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)';
+    X.strokeStyle = canBuy ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)';
+    rr(bx, by, 265, 108, 8); X.fill(); X.stroke();
+
+    // 图标
+    var ig = X.createRadialGradient(bx + 24, by + 24, 2, bx + 24, by + 24, 17);
+    ig.addColorStop(0, t.glow); ig.addColorStop(1, t.color);
+    X.fillStyle = ig;
+    X.beginPath(); X.arc(bx + 24, by + 24, 17, 0, Math.PI * 2); X.fill();
+
+    X.fillStyle = '#fff'; X.font = '12px sans-serif'; X.textAlign = 'center';
+    X.fillText(t.name.charAt(0), bx + 24, by + 29);
+
+    X.textAlign = 'left'; X.fillStyle = '#eee'; X.font = 'bold 14px sans-serif';
+    X.fillText(t.name, bx + 52, by + 22);
+    X.font = '11px sans-serif'; X.fillStyle = '#999';
+    X.fillText('伤害:' + t.dmg, bx + 52, by + 40);
+    X.fillText('射速:' + Math.round(1000 / t.rate) + '/s', bx + 52, by + 56);
+    X.fillText('范围:' + t.rng, bx + 52, by + 72);
+
+    // 购买按钮
+    if (t.cost === 0) {
+      X.fillStyle = 'rgba(76,175,80,0.25)';
+      rr(bx + 180, by + 32, 68, 24, 4); X.fill();
+      X.fillStyle = '#4caf50'; X.font = '11px sans-serif'; X.textAlign = 'center';
+      X.fillText('已解锁', bx + 214, by + 48);
+    } else {
+      var hov = G.hoverBtn === 'buy_' + i;
+      X.fillStyle = canBuy ? (hov ? 'rgba(255,214,0,0.3)' : 'rgba(255,214,0,0.12)') : 'rgba(80,80,80,0.15)';
+      rr(bx + 180, by + 32, 68, 24, 4); X.fill();
+      X.fillStyle = canBuy ? '#ffd600' : '#555';
+      X.font = 'bold 11px sans-serif'; X.textAlign = 'center';
+      X.fillText('💰' + t.cost, bx + 214, by + 48);
+    }
+  }
+
+  // 关闭按钮
+  var hovc = G.hoverBtn === 'close_shop';
+  X.fillStyle = hovc ? 'rgba(255,82,82,0.6)' : 'rgba(255,82,82,0.35)';
+  rr(G.W - 145, py + 8, 76, 26, 5); X.fill();
+  X.fillStyle = '#fff'; X.font = '12px sans-serif'; X.textAlign = 'center';
+  X.fillText('关闭 ✕', G.W - 107, py + 26);
+}
+
+/* ========= 升级面板 ========= */
+function drawUpgradePanel() {
+  var c = G.selectedCannon;
+  if (!c || c.type < 0) return;
+  var t = CT[c.type];
+  var px = G.W - 230, py = 45;
+
+  X.fillStyle = '#080c1e';
+  X.strokeStyle = '#333366'; X.lineWidth = 2;
+  rr(px, py, 210, 370, 10); X.fill(); X.stroke();
+
+  X.textAlign = 'center'; X.fillStyle = t.glow; X.font = 'bold 15px sans-serif';
+  X.fillText(t.name, px + 105, py + 24);
+  X.fillStyle = '#777'; X.font = '10px sans-serif';
+  X.fillText('Lv.' + c.level + '  |  击杀:' + (c.kills || 0), px + 105, py + 40);
+
+  var u = G.ups[c.uid] || { d: { lv: 0 }, r: { lv: 0 }, g: { lv: 0 }, e: { lv: 0 } };
+  var items = [
+    { key: 'd', label: '伤害', lv: u.d.lv, max: 10, val: c._dmg || t.dmg, cost: UE.d.c0 + u.d.lv * UE.d.ci },
+    { key: 'r', label: '射速', lv: u.r.lv, max: 10, val: Math.round(1000 / (c._rate || t.rate)), cost: UE.r.c0 + u.r.lv * UE.r.ci },
+    { key: 'g', label: '范围', lv: u.g.lv, max: 10, val: c._rng || t.rng, cost: UE.g.c0 + u.g.lv * UE.g.ci },
+    { key: 'e', label: '爆炸', lv: u.e.lv, max: 10, val: c._exp || 0, cost: UE.e.c0 + u.e.lv * UE.e.ci },
+  ];
+
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var iy = py + 54 + i * 70;
+    X.fillStyle = 'rgba(255,255,255,0.035)';
+    rr(px + 8, iy, 194, 62, 5); X.fill();
+
+    X.textAlign = 'left'; X.fillStyle = '#bbb'; X.font = '12px sans-serif';
+    X.fillText(it.label + ' Lv.' + it.lv + '/' + it.max, px + 14, iy + 18);
+    X.fillStyle = '#888'; X.font = '10px sans-serif';
+    X.fillText('当前: ' + Math.round(it.val * 10) / 10, px + 14, iy + 35);
+
+    if (it.lv < it.max) {
+      var hov = G.hoverBtn === 'up_' + it.key;
+      var can = G.gold >= it.cost;
+      X.fillStyle = can ? (hov ? 'rgba(255,214,0,0.3)' : 'rgba(255,214,0,0.12)') : 'rgba(60,60,60,0.2)';
+      rr(px + 126, iy + 28, 68, 22, 4); X.fill();
+      X.fillStyle = can ? '#ffd600' : '#555';
+      X.font = 'bold 10px sans-serif'; X.textAlign = 'center';
+      X.fillText('⬆ ' + it.cost, px + 160, iy + 43);
+    } else {
+      X.fillStyle = '#4caf50'; X.font = '10px sans-serif'; X.textAlign = 'center';
+      X.fillText('MAX', px + 160, iy + 43);
+    }
+  }
+
+  // 出售按钮
+  var hovs = G.hoverBtn === 'sell';
+  X.fillStyle = hovs ? 'rgba(255,82,82,0.55)' : 'rgba(255,82,82,0.3)';
+  rr(px + 8, py + 328, 194, 28, 5); X.fill();
+  X.fillStyle = '#fff'; X.font = '12px sans-serif'; X.textAlign = 'center';
+  X.fillText('出 售  💰+' + Math.floor(CT[c.type].cost * 0.6), px + 105, py + 347);
+}
+
+/* ========= 主绘制 ========= */
+function draw() {
+  X.save();
+  if (G.shakeTimer > 0) {
+    var s = G.shakePow * (G.shakeTimer / 10);
+    X.translate((Math.random() - 0.5) * s * 2, (Math.random() - 0.5) * s * 2);
+  }
+  if (G.lightFlash > 0) {
+    X.fillStyle = 'rgba(255,200,50,' + ((G.lightFlash / 10) * 0.25).toFixed(2) + ')';
+    X.fillRect(-20, -20, G.W + 40, G.H + 40);
+  }
+
+  drawSky();
+  drawGround();
+
+  for (var i = 0; i < G.zombies.length; i++) if (!G.zombies[i].fly) drawZombie(G.zombies[i]);
+  for (var i = 0; i < G.zombies.length; i++) if (G.zombies[i].fly) drawZombie(G.zombies[i]);
+
+  for (var i = 0; i < G.cannons.length; i++) drawCannonBody(G.cannons[i]);
+  for (var i = 0; i < G.bullets.length; i++) drawBullet(G.bullets[i]);
+
+  updateAndDrawParticles();
+  drawFloatTexts();
+  drawHUD();
+  if (G.selectedCannon && G.selectedCannon.type >= 0) drawUpgradePanel();
+  drawShop();
+
+  if (G.state === 'gameover') {
+    X.fillStyle = 'rgba(0,0,0,0.82)';
+    X.fillRect(-20, -20, G.W + 40, G.H + 40);
+    X.fillStyle = '#f44336'; X.font = 'bold 50px sans-serif'; X.textAlign = 'center';
+    X.shadowColor = '#f44336'; X.shadowBlur = 18;
+    X.fillText('GAME OVER', G.W / 2, G.H / 2 - 25);
+    X.shadowBlur = 0;
+    X.fillStyle = '#eee'; X.font = '19px sans-serif';
+    X.fillText('坚持了 ' + G.wave + ' 波', G.W / 2, G.H / 2 + 18);
+
+    var hov = G.hoverBtn === 'restart';
+    X.fillStyle = hov ? 'rgba(76,175,80,0.9)' : 'rgba(76,175,80,0.7)';
+    rr(G.W / 2 - 85, G.H / 2 + 35, 170, 40, 8); X.fill();
+    X.fillStyle = '#fff'; X.font = 'bold 16px sans-serif';
+    X.fillText('重新开始', G.W / 2, G.H / 2 + 61);
+  }
+
+  X.restore();
+}
+
+/* ========= 更新逻辑 ========= */
+function findTarget(c) {
+  var best = null, bestD = c._rng || CT[c.type].rng;
+  for (var i = 0; i < G.zombies.length; i++) {
+    var z = G.zombies[i];
+    if (!z.alive) continue;
+    var d = dist(c.x, c.y, z.x, z.y);
+    if (d < bestD) { bestD = d; best = z; }
+  }
+  return best;
+}
+
+function fireBullet(c, tx, ty) {
+  var t = CT[c.type];
+  if (!t) return;
+  var dx = tx - c.x, dy = ty - c.y;
+  var d = Math.sqrt(dx * dx + dy * dy) || 1;
+  var spd = t.spd;
+  if (c.type === 4) {
+    G.bullets.push({ x: c.x, y: c.y, vx: dx / d * 10, vy: dy / d * 10, dmg: c._dmg || t.dmg, life: 1, isLaser: true });
+    return;
+  }
+  G.bullets.push({
+    x: c.x + dx / d * 36, y: c.y + dy / d * 36,
+    vx: dx / d * spd, vy: dy / d * spd,
+    dmg: c._dmg || t.dmg, r: c.type === 3 ? 5 : 3,
+    color: t.color, life: 210, isLaser: false,
+    exp: c._exp || 0, expR: c.type === 3 ? 48 : 0
+  });
+  if (c.type === 1) {
+    for (var k = -2; k <= 2; k++) {
+      if (k === 0) continue;
+      var a = Math.atan2(dy, dx) + k * 0.2;
+      G.bullets.push({
+        x: c.x, y: c.y, vx: Math.cos(a) * spd * 0.85, vy: Math.sin(a) * spd * 0.85,
+        dmg: (c._dmg || t.dmg) * 0.5, r: 2, color: '#ffcc80', life: 140, isLaser: false, exp: 0, expR: 0
+      });
+    }
+  }
+}
+
+function update(dt) {
+  // 僵尸生成
+  if (G.waveActive && G.spawnCount < G.spawnTotal) {
+    G.spawnTimer += dt;
+    var inv = Math.max(150, 650 - G.wave * 20);
+    if (G.spawnTimer >= inv) {
+      G.spawnTimer = 0; G.spawnCount++;
+      var pool = [0, 0, 0, 1, 1, 2];
+      if (G.wave >= 3) pool.push(3, 3);
+      if (G.wave >= 6) pool.push(2);
+      if (G.wave >= 10) pool.push(1, 3);
+      G.zombies.push(spawnZ(pool[Math.floor(Math.random() * pool.length)]));
+    }
+  }
+  // 波次结束
+  if (G.waveActive && G.spawnCount >= G.spawnTotal) {
+    var any = false;
+    for (var i = 0; i < G.zombies.length; i++) if (G.zombies[i].alive) { any = true; break; }
+    if (!any) { G.waveActive = false; G.waveDelay = 180; }
+  }
+  if (!G.waveActive && G.waveDelay > 0) G.waveDelay--;
+
+  // 炮台
+  for (var i = 0; i < G.cannons.length; i++) {
+    var c = G.cannons[i];
+    if (c.type < 0) continue;
+    var t = CT[c.type];
+    var target = findTarget(c);
+    if (target) {
+      c.angle = Math.atan2(target.y - c.y, target.x - c.x);
+      c.timer += dt;
+      var rate = c._rate || t.rate;
+      if (c.timer >= rate) {
+        c.timer = 0;
+        fireBullet(c, target.x, target.y);
+        c.animFire = 12;
+        if (c.type === 3) { G.shakeTimer = 4; G.shakePow = 3; }
+      }
+    }
+    if (c.type === 5 && target && target.alive) target.slow = 12;
+  }
+
+  // 僵尸移动
+  for (var i = 0; i < G.zombies.length; i++) {
+    var z = G.zombies[i];
+    if (!z.alive) continue;
+    var bestC = null, bestD = 99999;
+    for (var j = 0; j < G.cannons.length; j++) {
+      if (G.cannons[j].type < 0) continue;
+      var dd = dist(z.x, z.y, G.cannons[j].x, G.cannons[j].y);
+      if (dd < bestD) { bestD = dd; bestC = G.cannons[j]; }
+    }
+    if (bestC) {
+      var a = Math.atan2(bestC.y - z.y, bestC.x - z.x);
+      var spd = z.spd;
+      if (z.slow > 0) spd *= 0.3;
+      if (!z.fly) { z.x += Math.cos(a) * spd; z.y += Math.sin(a) * spd; }
+      else { z.x -= spd * 0.65; }
+    }
+    if (z.x < 25) {
+      z.alive = false; G.hp--;
+      G.shakeTimer = 7; G.shakePow = 5;
+      if (G.hp <= 0) G.state = 'gameover';
+    }
+  }
+
+  // 子弹
+  for (var i = 0; i < G.bullets.length; i++) {
+    var b = G.bullets[i];
+    if (b.isLaser) {
+      b.life--;
+      for (var j = 0; j < G.zombies.length; j++) {
+        var z = G.zombies[j];
+        if (!z.alive) continue;
+        if (Math.abs(b.x - z.x) < 20 && Math.abs(b.y - z.y) < 20) {
+          z.hp -= (b.dmg || 0) * dt / 1000;
+          z.flash = 3;
+          if (z.hp <= 0) { z.alive = false; G.gold += z.reward; spawnKillEffect(z); }
+        }
+      }
+      continue;
+    }
+    b.x += b.vx; b.y += b.vy; b.life--;
+    for (var j = 0; j < G.zombies.length; j++) {
+      var z = G.zombies[j];
+      if (!z.alive) continue;
+      if (Math.abs(b.x - z.x) < z.sz + b.r && Math.abs(b.y - z.y) < z.sz + b.r) {
+        z.hp -= b.dmg; z.flash = 4;
+        if (b.exp > 0) spawnExplosion(b.x, b.y, b.expR || 40, b.exp);
+        if (z.hp <= 0) { z.alive = false; G.gold += z.reward; spawnKillEffect(z); G.cannons.forEach(function (cc) { if (cc.type >= 0) cc.kills = (cc.kills || 0) + 1; }); }
+        b.life = 0; break;
+      }
+    }
+  }
+  G.bullets = G.bullets.filter(function (b) { return b.life > 0; });
+  G.zombies = G.zombies.filter(function (z) { return z.alive; });
+
+  if (G.lightFlash > 0) G.lightFlash--;
+  if (G.shakeTimer > 0) G.shakeTimer--;
+}
+
+/* ========= 事件 ========= */
+C.addEventListener('mousemove', function (e) {
+  var r = C.getBoundingClientRect();
+  G.mouseX = e.clientX - r.left;
+  G.mouseY = e.clientY - r.top;
+  updateHover();
+});
+
+function updateHover() {
+  var mx = G.mouseX, my = G.mouseY;
+  G.hoverBtn = null;
+  if (G.state === 'gameover') {
+    if (mx > G.W / 2 - 85 && mx < G.W / 2 + 85 && my > G.H / 2 + 35 && my < G.H / 2 + 75) G.hoverBtn = 'restart';
+    return;
+  }
+  if (!G.waveActive && G.waveDelay <= 0) {
+    if (mx > G.W - 168 && mx < G.W - 16 && my > 6 && my < 36) G.hoverBtn = 'start';
+  }
+  if (mx > 12 && mx < 98 && my > 52 && my < 78) G.hoverBtn = 'shop';
+  if (G.shopOpen) {
+    if (mx > G.W - 145 && mx < G.W - 69 && my > 33 && my < 59) G.hoverBtn = 'close_shop';
+    for (var i = 0; i < CT.length; i++) {
+      var col = i % 3, row = Math.floor(i / 3);
+      var bx = 50 + 30 + col * 290;
+      var by = 25 + 50 + row * 125;
+      if (mx > bx + 180 && mx < bx + 248 && my > by + 32 && my < by + 56) G.hoverBtn = 'buy_' + i;
+    }
+    return;
+  }
+  if (G.selectedCannon && G.selectedCannon.type >= 0) {
+    var c = G.selectedCannon, px = G.W - 230, py = 45;
+    var keys = ['d', 'r', 'g', 'e'];
+    for (var i = 0; i < 4; i++) {
+      var iy = py + 54 + i * 70;
+      if (mx > px + 126 && mx < px + 194 && my > iy + 28 && my < iy + 50) G.hoverBtn = 'up_' + keys[i];
+    }
+    if (mx > px + 8 && mx < px + 202 && my > py + 328 && my < py + 356) G.hoverBtn = 'sell';
+  }
+}
+
+function handleClick(mx, my) {
+  if (G.state === 'gameover') {
+    if (mx > G.W / 2 - 85 && mx < G.W / 2 + 85 && my > G.H / 2 + 35 && my < G.H / 2 + 75) resetGame();
+    return;
+  }
+  if (!G.waveActive && G.waveDelay <= 0) {
+    if (mx > G.W - 168 && mx < G.W - 16 && my > 6 && my < 36) { startWave(); return; }
+  }
+  if (mx > 12 && mx < 98 && my > 52 && my < 78) { G.shopOpen = true; G.selectedCannon = null; return; }
+
+  if (G.shopOpen) {
+    if (mx > G.W - 145 && mx < G.W - 69 && my > 33 && my < 59) { G.shopOpen = false; return; }
+    for (var i = 0; i < CT.length; i++) {
+      var col = i % 3, row = Math.floor(i / 3);
+      var bx = 50 + 30 + col * 290;
+      var by = 25 + 50 + row * 125;
+      if (mx > bx && mx < bx + 265 && my > by && my < by + 108) {
+        if (G.gold >= CT[i].cost || CT[i].cost === 0) {
+          for (var j = 0; j < G.cannons.length; j++) {
+            if (G.cannons[j].type < 0) {
+              G.cannons[j].type = i;
+              G.cannons[j].level = 1; G.cannons[j].kills = 0;
+              G.cannons[j].uid = 'c_' + Date.now() + '_' + j;
+              G.gold -= CT[i].cost;
+              applyUpgs();
+              break;
+            }
+          }
+        }
+        return;
+      }
+    }
+    return;
+  }
+
+  if (G.selectedCannon && G.selectedCannon.type >= 0) {
+    var c = G.selectedCannon, px = G.W - 230, py = 45;
+    var keys = ['d', 'r', 'g', 'e'];
+    var u = G.ups[c.uid] || { d: { lv: 0 }, r: { lv: 0 }, g: { lv: 0 }, e: { lv: 0 } };
+    for (var i = 0; i < 4; i++) {
+      var iy = py + 54 + i * 70;
+      if (mx > px + 126 && mx < px + 194 && my > iy + 28 && my < iy + 50) {
+        var key = keys[i];
+        var ci = ([UE.d.ci, UE.r.ci, UE.g.ci, UE.e.ci][i]);
+        var c0 = ([UE.d.c0, UE.r.c0, UE.g.c0, UE.e.c0][i]);
+        var cost = c0 + u[key].lv * ci;
+        if (G.gold >= cost && u[key].lv < 10) { G.gold -= cost; u[key].lv++; applyUpgs(); }
+        return;
+      }
+    }
+    if (mx > px + 8 && mx < px + 202 && my > py + 328 && my < py + 356) {
+      G.gold += Math.floor(CT[c.type].cost * 0.6);
+      c.type = -1; c.level = 1; c.kills = 0; c.uid = null;
+      G.selectedCannon = null; applyUpgs();
+      return;
+    }
+  }
+
+  for (var i = 0; i < G.cannons.length; i++) {
+    var c = G.cannons[i];
+    if (c.type >= 0 && dist(mx, my, c.x, c.y) < 28) {
+      G.selectedCannon = c; G.shopOpen = false; return;
+    }
+    if (c.type < 0 && dist(mx, my, c.x, c.y) < 28) {
+      G.shopOpen = true; G.selectedCannon = null; return;
+    }
+  }
+  G.selectedCannon = null; G.shopOpen = false;
+}
+
+C.addEventListener('click', function (e) {
+  var r = C.getBoundingClientRect();
+  handleClick(e.clientX - r.left, e.clientY - r.top);
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'b' || e.key === 'B') { G.shopOpen = !G.shopOpen; if (G.shopOpen) G.selectedCannon = null; }
+  if (e.key === ' ') { e.preventDefault(); if (!G.waveActive && G.waveDelay <= 0) startWave(); }
+});
+
+function resetGame() {
+  G.state = 'playing'; G.wave = 0; G.gold = 800; G.hp = 20;
+  G.zombies = []; G.bullets = []; G.particles = []; G.floatTexts = [];
+  G.waveActive = false; G.waveDelay = 0;
+  G.selectedCannon = null; G.shopOpen = false; G.ups = {};
+  G.lightFlash = 0;
+  initCannons(); applyUpgs();
+}
+
+applyUpgs();
+G.lastTime = 0;
+function loop(ts) {
+  if (!G.lastTime) G.lastTime = ts;
+  var dt = Math.min(ts - G.lastTime, 50);
+  G.lastTime = ts;
+  if (G.state === 'playing') update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

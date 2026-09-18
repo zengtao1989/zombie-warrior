@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>向僵尸开炮</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Microsoft YaHei', sans-serif; }
+canvas { border: 2px solid #333; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="C"></canvas>
+<script>
+var G = {
+  W: 900, H: 560,
+  state: 'playing', wave: 0, gold: 600, hp: 20,
+  canns: [], bullets: [], zombies: [], particles: [], floatingTexts: [],
+  spawnTimer: 0, spawnCount: 0, spawnTotal: 0,
+  waveActive: false, waveDelay: 0,
+  lastTime: 0, shopOpen: false,
+  mouseX: 450, mouseY: 280,
+  shakeTimer: 0, shakeIntensity: 0
+};
+
+var C = document.getElementById('C');
+var X = C.getContext('2d');
+C.width = G.W; C.height = G.H;
+
+/* ========= 炮台模板 ========= */
+var CT = [
+  { id:'p', name:'手枪炮',   dmg:8,   rate:500, rng:180, spd:4.5, cost:0,   color:'#4fc3f7', icon:'🔫'},
+  { id:'s', name:'散弹炮',   dmg:22,  rate:1200, rng:140, spd:3.8, cost:300, color:'#ffb74d', icon:'💥'},
+  { id:'m', name:'机枪炮',   dmg:5,   rate:120, rng:200, spd:5.5, cost:500, color:'#81c784', icon:'🔫'},
+  { id:'r', name:'火箭炮',   dmg:55,  rate:2000, rng:220, spd:2.8, cost:800, color:'#e57373', icon:'🚀'},
+  { id:'l', name:'激光炮',   dmg:40,  rate:80,  rng:260, spd:0,   cost:1200,color:'#ba68c8', icon:'⚡'},
+  { id:'i', name:'冰霜炮',   dmg:4,   rate:350, rng:170, spd:4,   cost:600, color:'#4dd0e1', icon:'❄️'},
+];
+
+/* ========= 僵尸模板 ========= */
+var ZT = [
+  { id:0, name:'普通僵尸', hp:60,  spd:0.7, sz:16, color:'#6d4c41', reward:10 },
+  { id:1, name:'快速僵尸', hp:40,  spd:1.5, sz:13, color:'#8d6e63', reward:12 },
+  { id:2, name:'坦克僵尸', hp:300, spd:0.35,sz:24, color:'#4e342e', reward:40 },
+  { id:3, name:'飞行僵尸', hp:50,  spd:1.1, sz:14, color:'#ff8a65', reward:15, fly:true },
+  { id:4, name:'BOSS僵尸',hp:1200,spd:0.25,sz:32, color:'#b71c1c', reward:200 },
+];
+
+/* ========= 初始化炮台 ========= */
+function initCannons() {
+  var slots = [
+    {x:120, y:140}, {x:120, y:280}, {x:120, y:420},
+    {x:320, y:100}, {x:320, y:240}, {x:320, y:380},
+    {x:540, y:160}, {x:540, y:320},
+  ];
+  for (var i = 0; i < slots.length; i++) {
+    G.canns.push({
+      x: slots[i].x, y: slots[i].y,
+      type: i < 3 ? 0 : -1,  // 前3个默认手枪，其余未解锁
+      angle: 0, timer: 0, level: 1, totalKill: 0,
+      upgrading: false
+    });
+  }
+}
+
+/* ========= 升级数据 ========= */
+var UE = {
+  d: { pv: 5,   cost0:60,  costInc:40,  label:'伤害', icon:'💥' },
+  r: { pv: 80,  cost0:80,  costInc:50,  label:'射速', icon:'🔥' },
+  g: { pv: 30, cost0:100, costInc:60,  label:'范围', icon:'🎯' },
+  e: { pv: 8,  cost0:120, costInc:80,  label:'爆炸', icon:'💣' },
+};
+
+function cannUpgrades(cann) {
+  var t = CT[cann.type];
+  if (!t || cann.type < 0) return { d:{lv:0}, r:{lv:0}, g:{lv:0}, e:{lv:0} };
+  return G.ups[cann._uid] || { d:{lv:0}, r:{lv:0}, g:{lv:0}, e:{lv:0} };
+}
+
+function applyCannUpgrades() {
+  for (var i = 0; i < G.canns.length; i++) {
+    var c = G.canns[i];
+    if (c.type < 0) continue;
+    var t = CT[c.type];
+    var u = G.ups[c._uid];
+    if (!u) { G.ups[c._uid] = { d:{lv:0}, r:{lv:0}, g:{lv:0}, e:{lv:0} }; u = G.ups[c._uid]; }
+    c.dmg  = t.dmg + UE.d.pv * u.d.lv;
+    c.rate = Math.max(60, t.rate - UE.r.pv * u.r.lv);
+    c.rng  = t.rng + UE.g.pv * u.g.lv;
+    c.expDmg = UE.e.pv * u.e.lv;
+  }
+}
+
+/* ========= 生成僵尸波次 ========= */
+function startWave() {
+  G.wave++;
+  var n = 4 + G.wave * 3;
+  if (G.wave >= 5) n += Math.floor(G.wave / 5) * 4;
+  G.spawnTotal = Math.min(n, 40);
+  G.spawnCount = 0;
+  G.spawnTimer = 0;
+  G.waveActive = true;
+
+  // BOSS每5波
+  if (G.wave % 5 === 0) {
+    G.zombies.push(spawnZombie(4, true));
+  }
+}
+
+function spawnZombie(typeIdx, boss) {
+  var t = ZT[typeIdx || 0];
+  var side = Math.random() < 0.5 ? -30 : G.W + 30;
+  var z = {
+    x: side, y: 80 + Math.random() * (G.H - 160),
+    hp: t.hp * (1 + G.wave * 0.12),
+    maxHp: t.hp * (1 + G.wave * 0.12),
+    spd: t.spd * (1 + G.wave * 0.03),
+    sz: t.sz,
+    color: t.color,
+    type: typeIdx || 0,
+    fly: !!t.fly,
+    reward: t.reward,
+    alive: true,
+    hitFlash: 0,
+    slowTimer: 0,
+    poisonTimer: 0,
+  };
+  if (boss) { z.sz = 34; z.hp *= 2; z.maxHp *= 2; }
+  return z;
+}
+
+function getSpawnY() {
+  var lanes = [100, 180, 260, 340, 420, 500];
+  return lanes[Math.floor(Math.random() * lanes.length)];
+}
+
+/* ========= 子弹 ========= */
+function fireBullet(cann, tx, ty) {
+  var t = CT[cann.type];
+  if (!t) return;
+  var dx = tx - cann.x, dy = ty - cann.y;
+  var dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist === 0) return;
+  var s = t.spd;
+  // 激光特殊处理
+  if (cann.type === 5) { // 激光炮
+    G.bullets.push({
+      x: cann.x, y: cann.y,
+      tx: tx, ty: ty,
+      vx: dx/dist*8, vy: dy/dist*8,
+      dmg: cann.dmg || t.dmg,
+      r: 4, color: '#e040fb',
+      life: 1, pierce: 3,
+      isLaser: true
+    });
+    return;
+  }
+  G.bullets.push({
+    x: cann.x, y: cann.y,
+    vx: dx/dist*s, vy: dy/dist*s,
+    dmg: cann.dmg || t.dmg,
+    r: cann.type === 3 ? 6 : 3,
+    color: t.color,
+    life: 200, pierce: 1,
+    expDmg: cann.expDmg || 0,
+    expR: cann.type === 3 ? 45 : 0,
+  });
+  // 散弹炮多发
+  if (cann.type === 1) {
+    for (var k = -2; k <= 2; k++) {
+      if (k === 0) continue;
+      var a = Math.atan2(dy, dx) + k * 0.18;
+      G.bullets.push({
+        x: cann.x, y: cann.y,
+        vx: Math.cos(a)*t.spd*0.85, vy: Math.sin(a)*t.spd*0.85,
+        dmg: (cann.dmg||t.dmg)*0.6,
+        r: 2, color: '#ffcc80',
+        life: 160, pierce: 1, expDmg:0, expR:0,
+      });
+    }
+  }
+}
+
+/* ========= 粒子特效 ========= */
+function spawnParticles(x, y, color, count, spd) {
+  for (var i = 0; i < count; i++) {
+    var a = Math.random() * Math.PI * 2;
+    var s = (spd||2) * (0.5 + Math.random());
+    G.particles.push({
+      x: x, y: y,
+      vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+      life: 20 + Math.random()*20,
+      maxLife: 40,
+      color: color,
+      sz: 2 + Math.random()*3,
+    });
+  }
+}
+
+function spawnExplosion(x, y, r, dmg) {
+  spawnParticles(x, y, '#ff9800', 12, 3);
+  spawnParticles(x, y, '#ff5722', 8, 2);
+  G.shakeTimer = 6; G.shakeIntensity = 4;
+  // 范围伤害
+  for (var i = 0; i < G.zombies.length; i++) {
+    var z = G.zombies[i];
+    if (!z.alive) continue;
+    var dx = z.x - x, dy = z.y - y;
+    if (Math.sqrt(dx*dx+dy*dy) < r) {
+      z.hp -= dmg;
+      z.hitFlash = 6;
+      if (z.hp <= 0) killZombie(z, i);
+    }
+  }
+}
+
+function killZombie(z, idx) {
+  z.alive = false;
+  G.gold += z.reward;
+  spawnParticles(z.x, z.y, z.color, 10, 2.5);
+  G.floatingTexts.push({ x: z.x, y: z.y, text: '+'+z.reward, life: 40, vy: -1.5, color:'#ffd600' });
+  G.canns.forEach(function(c){ if(c.type>=0) c.totalKill = (c.totalKill||0)+1; });
+}
+
+/* ========= 绘制函数 ========= */
+function drawGround() {
+  // 地面
+  var grd = X.createLinearGradient(0, G.H-100, 0, G.H);
+  grd.addColorStop(0, '#3e2723');
+  grd.addColorStop(1, '#5d4037');
+  X.fillStyle = grd;
+  X.fillRect(0, G.H-100, G.W, 100);
+  // 草地纹理
+  X.fillStyle = '#4e342e';
+  for (var i = 0; i < G.W; i += 30) {
+    X.fillRect(i, G.H-100, 14, 4);
+  }
+  // 道路
+  X.fillStyle = '#616161';
+  X.fillRect(0, G.H-100, G.W, 36);
+  X.fillStyle = '#757575';
+  X.fillRect(0, G.H-100, G.W, 2);
+  X.fillRect(0, G.H-64, G.W, 2);
+}
+
+function drawCannon(c) {
+  if (c.type < 0) {
+    // 未解锁格子
+    X.strokeStyle = 'rgba(255,255,255,0.15)';
+    X.lineWidth = 2;
+    X.setLineDash([6, 4]);
+    X.strokeRect(c.x-24, c.y-24, 48, 48);
+    X.setLineDash([]);
+    return;
+  }
+  var t = CT[c.type];
+  var cx = c.x, cy = c.y;
+
+  // 底座
+  X.save();
+  X.translate(cx, cy);
+  X.fillStyle = '#455a64';
+  X.beginPath();
+  X.arc(0, 0, 26, 0, Math.PI*2);
+  X.fill();
+  X.fillStyle = '#607d8b';
+  X.beginPath();
+  X.arc(0, 0, 20, 0, Math.PI*2);
+  X.fill();
+
+  // 炮管
+  X.rotate(c.angle);
+  X.fillStyle = t.color;
+  X.fillRect(0, -5, 28, 10);
+  X.fillStyle = '#fff';
+  X.globalAlpha = 0.3;
+  X.fillRect(0, -3, 28, 6);
+  X.globalAlpha = 1;
+  // 炮口
+  X.fillStyle = '#ffd54f';
+  X.beginPath();
+  X.arc(28, 0, 5, 0, Math.PI*2);
+  X.fill();
+
+  X.restore();
+
+  // 等级星星
+  for (var s = 0; s < (c.level||1); s++) {
+    X.fillStyle = '#ffd600';
+    X.font = '10px sans-serif';
+    X.fillText('★', cx - 16 + s*11, cy + 30);
+  }
+
+  // 范围圈（选中时）
+  if (G.selectedCann === c) {
+    X.strokeStyle = 'rgba(255,255,255,0.25)';
+    X.lineWidth = 1;
+    X.setLineDash([4, 4]);
+    X.beginPath();
+    X.arc(cx, cy, c.rng || t.rng, 0, Math.PI*2);
+    X.stroke();
+    X.setLineDash([]);
+  }
+}
+
+function drawZombie(z) {
+  if (!z.alive) return;
+  X.save();
+  X.translate(z.x, z.y);
+
+  // 受击闪白
+  if (z.hitFlash > 0) {
+    X.globalAlpha = 0.6;
+    z.hitFlash--;
+  }
+
+  var s = z.sz;
+  // 阴影
+  X.fillStyle = 'rgba(0,0,0,0.3)';
+  X.beginPath();
+  X.ellipse(0, s+4, s*0.8, 5, 0, 0, Math.PI*2);
+  X.fill();
+
+  if (z.fly) {
+    // 飞行僵尸
+    X.fillStyle = z.color;
+    X.beginPath();
+    X.arc(0, 0, s, 0, Math.PI*2);
+    X.fill();
+    X.fillStyle = '#ffccbc';
+    X.beginPath();
+    X.arc(-3, -3, s*0.5, 0, Math.PI*2);
+    X.fill();
+    // 翅膀
+    X.fillStyle = 'rgba(255,138,101,0.5)';
+    X.beginPath();
+    X.ellipse(-s-4, 0, 8, 14, -0.3, 0, Math.PI*2);
+    X.fill();
+    X.beginPath();
+    X.ellipse(s+4, 0, 8, 14, 0.3, 0, Math.PI*2);
+    X.fill();
+  } else {
+    // 普通僵尸身体
+    X.fillStyle = z.color;
+    X.beginPath();
+    X.arc(0, 0, s, 0, Math.PI*2);
+    X.fill();
+    // 头
+    X.fillStyle = '#8d6e63';
+    X.beginPath();
+    X.arc(0, -s*0.3, s*0.65, 0, Math.PI*2);
+    X.fill();
+    // 眼睛
+    X.fillStyle = '#ff1744';
+    X.beginPath();
+    X.arc(-4, -s*0.4, 3, 0, Math.PI*2);
+    X.fill();
+    X.beginPath();
+    X.arc(4, -s*0.4, 3, 0, Math.PI*2);
+    X.fill();
+    // 嘴
+    X.strokeStyle = '#4e342e';
+    X.lineWidth = 1.5;
+    X.beginPath();
+    X.arc(0, -s*0.15, 4, 0.1, Math.PI-0.1);
+    X.stroke();
+  }
+
+  // 冻结效果
+  if (z.slowTimer > 0) {
+    X.fillStyle = 'rgba(79,208,225,0.35)';
+    X.beginPath();
+    X.arc(0, 0, s+4, 0, Math.PI*2);
+    X.fill();
+  }
+
+  X.globalAlpha = 1;
+  X.restore();
+
+  // 血条
+  var bw = s * 2.2;
+  var bh = 4;
+  var bx = z.x - bw/2;
+  var by = z.y - s - 10;
+  X.fillStyle = '#333';
+  X.fillRect(bx, by, bw, bh);
+  X.fillStyle = z.hp / z.maxHp > 0.5 ? '#4caf50' : (z.hp / z.maxHp > 0.25 ? '#ff9800' : '#f44336');
+  X.fillRect(bx, by, bw * (z.hp / z.maxHp), bh);
+}
+
+function drawBullet(b) {
+  if (b.isLaser) {
+    X.strokeStyle = 'rgba(224,64,251,0.7)';
+    X.lineWidth = 3;
+    X.beginPath();
+    X.moveTo(b.x, b.y);
+    X.lineTo(b.x + b.vx*8, b.y + b.vy*8);
+    X.stroke();
+    X.fillStyle = '#e040fb';
+    X.beginPath();
+    X.arc(b.x, b.y, 4, 0, Math.PI*2);
+    X.fill();
+    return;
+  }
+  X.fillStyle = b.color;
+  X.beginPath();
+  X.arc(b.x, b.y, b.r, 0, Math.PI*2);
+  X.fill();
+  // 拖尾
+  X.fillStyle = 'rgba(255,255,255,0.3)';
+  X.beginPath();
+  X.arc(b.x - b.vx*0.5, b.y - b.vy*0.5, b.r*0.7, 0, Math.PI*2);
+  X.fill();
+}
+
+function drawParticles() {
+  for (var i = 0; i < G.particles.length; i++) {
+    var p = G.particles[i];
+    X.globalAlpha = p.life / p.maxLife;
+    X.fillStyle = p.color;
+    X.beginPath();
+    X.arc(p.x, p.y, p.sz * (p.life/p.maxLife), 0, Math.PI*2);
+    X.fill();
+  }
+  X.globalAlpha = 1;
+}
+
+function drawFloatingTexts() {
+  for (var i = 0; i < G.floatingTexts.length; i++) {
+    var ft = G.floatingTexts[i];
+    X.globalAlpha = ft.life / 40;
+    X.fillStyle = ft.color || '#fff';
+    X.font = 'bold 14px sans-serif';
+    X.textAlign = 'center';
+    X.fillText(ft.text, ft.x, ft.y);
+  }
+  X.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // 顶部栏
+  X.fillStyle = 'rgba(0,0,0,0.6)';
+  X.fillRect(0, 0, G.W, 44);
+
+  X.font = 'bold 18px sans-serif';
+  X.textAlign = 'left';
+  // 金币
+  X.fillStyle = '#ffd600';
+  X.fillText('💰 ' + G.gold, 16, 30);
+  // 波次
+  X.fillStyle = '#fff';
+  X.fillText('🌊 第 ' + G.wave + ' 波', 180, 30);
+  // 生命
+  X.fillStyle = '#ef5350';
+  X.fillText('❤️ ' + G.hp, 360, 30);
+  // 僵尸数量
+  var aliveZ = 0;
+  for (var i = 0; i < G.zombies.length; i++) if (G.zombies[i].alive) aliveZ++;
+  X.fillStyle = '#aaa';
+  X.fillText('僵尸: ' + aliveZ, 520, 30);
+
+  // 开始波次按钮
+  if (!G.waveActive && G.waveDelay <= 0) {
+    X.fillStyle = 'rgba(76,175,80,0.9)';
+    roundRect(X, G.W-160, 6, 148, 32, 6);
+    X.fill();
+    X.fillStyle = '#fff';
+    X.font = 'bold 15px sans-serif';
+    X.textAlign = 'center';
+    X.fillText('开始波次 ▶', G.W-86, 28);
+  }
+  if (G.waveDelay > 0) {
+    X.fillStyle = 'rgba(255,255,255,0.8)';
+    X.font = '14px sans-serif';
+    X.textAlign = 'center';
+    X.fillText('下波 ' + Math.ceil(G.waveDelay/60) + 's', G.W-86, 28);
+  }
+}
+
+function drawShop() {
+  if (!G.shopOpen) return;
+  // 背景遮罩
+  X.fillStyle = 'rgba(0,0,0,0.7)';
+  X.fillRect(0, 0, G.W, G.H);
+
+  X.fillStyle = '#1a1a2e';
+  X.strokeStyle = '#333';
+  X.lineWidth = 2;
+  roundRect(X, 60, 40, G.W-120, G.H-80, 12);
+  X.fill(); X.stroke();
+
+  X.fillStyle = '#fff';
+  X.font = 'bold 22px sans-serif';
+  X.textAlign = 'center';
+  X.fillText('🏪 武器商店', G.W/2, 76);
+
+  // 炮台购买列表
+  var startX = 90, startY = 100;
+  for (var i = 0; i < CT.length; i++) {
+    var t = CT[i];
+    var bx = startX + (i % 3) * 260;
+    var by = startY + Math.floor(i / 3) * 120;
+
+    X.fillStyle = G.gold >= t.cost ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
+    X.strokeStyle = G.gold >= t.cost ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)';
+    roundRect(X, bx, by, 240, 100, 8);
+    X.fill(); X.stroke();
+
+    X.font = '16px sans-serif';
+    X.textAlign = 'left';
+    X.fillStyle = t.color;
+    X.fillText(t.icon + ' ' + t.name, bx+10, by+28);
+    X.fillStyle = '#aaa';
+    X.font = '12px sans-serif';
+    X.fillText('伤害:'+t.dmg+' 射速:'+(Math.round(1000/t.rate))+'/s', bx+10, by+48);
+    X.fillText('范围:'+t.rng, bx+10, by+66);
+
+    if (t.cost === 0) {
+      X.fillStyle = '#4caf50';
+      X.font = 'bold 13px sans-serif';
+      X.fillText('已解锁', bx+140, by+40);
+    } else {
+      X.fillStyle = G.gold >= t.cost ? '#ffd600' : '#888';
+      X.font = 'bold 13px sans-serif';
+      X.fillText('💰' + t.cost, bx+140, by+40);
+    }
+  }
+
+  // 关闭按钮
+  X.fillStyle = 'rgba(255,82,82,0.8)';
+  roundRect(X, G.W-140, 50, 70, 30, 6);
+  X.fill();
+  X.fillStyle = '#fff';
+  X.font = '14px sans-serif';
+  X.textAlign = 'center';
+  X.fillText('关闭 ✕', G.W-105, 70);
+}
+
+function drawUpgradePanel() {
+  if (!G.selectedCann || G.selectedCann.type < 0) return;
+  var c = G.selectedCann;
+  var t = CT[c.type];
+  var px = G.W - 220, py = 60;
+
+  X.fillStyle = 'rgba(20,20,40,0.95)';
+  X.strokeStyle = '#444';
+  roundRect(X, px, py, 200, 340, 10);
+  X.fill(); X.stroke();
+
+  X.fillStyle = '#fff';
+  X.font = 'bold 16px sans-serif';
+  X.textAlign = 'center';
+  X.fillText(t.icon + ' ' + t.name, px+100, py+28);
+
+  X.font = '12px sans-serif';
+  X.fillStyle = '#aaa';
+  X.fillText('等级 ' + (c.level||1) + ' | 击杀 ' + (c.totalKill||0), px+100, py+46);
+
+  var u = G.ups[c._uid] || { d:{lv:0}, r:{lv:0}, g:{lv:0}, e:{lv:0} };
+  var ups = [
+    { key:'d', label:'伤害', icon:'💥', lv:u.d.lv, val:(c.dmg||t.dmg), cost: UE.d.cost0 + u.d.lv * UE.d.costInc },
+    { key:'r', label:'射速', icon:'🔥', lv:u.r.lv, val:Math.round(1000/(c.rate||t.rate)), cost: UE.r.cost0 + u.r.lv * UE.r.costInc },
+    { key:'g', label:'范围', icon:'🎯', lv:u.g.lv, val:(c.rng||t.rng), cost: UE.g.cost0 + u.g.lv * UE.g.costInc },
+    { key:'e', label:'爆炸', icon:'💣', lv:u.e.lv, val:(c.expDmg||0), cost: UE.e.cost0 + u.e.lv * UE.e.costInc },
+  ];
+
+  for (var i = 0; i < ups.length; i++) {
+    var uo = ups[i];
+    var uy = py + 64 + i * 65;
+    X.fillStyle = 'rgba(255,255,255,0.06)';
+    roundRect(X, px+10, uy, 180, 58, 6);
+    X.fill();
+
+    X.textAlign = 'left';
+    X.font = '13px sans-serif';
+    X.fillStyle = '#fff';
+    X.fillText(uo.icon + ' ' + uo.label + ' Lv.' + uo.lv, px+16, uy+20);
+    X.fillStyle = '#aaa';
+    X.font = '11px sans-serif';
+    X.fillText('当前: ' + Math.round(uo.val), px+16, uy+38);
+
+    // 升级按钮
+    if (uo.lv < 10) {
+      X.fillStyle = G.gold >= uo.cost ? '#ffd600' : '#555';
+      X.font = 'bold 11px sans-serif';
+      X.textAlign = 'right';
+      X.fillText('💰' + uo.cost, px+172, uy+28);
+      X.fillStyle = G.gold >= uo.cost ? 'rgba(76,175,80,0.7)' : 'rgba(120,120,120,0.4)';
+      roundRect(X, px+110, uy+34, 68, 20, 4);
+      X.fill();
+      X.fillStyle = '#fff';
+      X.font = '11px sans-serif';
+      X.textAlign = 'center';
+      X.fillText('升级', px+144, uy+48);
+    } else {
+      X.fillStyle = '#4caf50';
+      X.font = '11px sans-serif';
+      X.textAlign = 'center';
+      X.fillText('MAX', px+144, uy+48);
+    }
+  }
+
+  // 出售按钮
+  X.fillStyle = 'rgba(255,82,82,0.6)';
+  roundRect(X, px+10, py+300, 180, 28, 6);
+  X.fill();
+  X.fillStyle = '#fff';
+  X.font = '12px sans-serif';
+  X.textAlign = 'center';
+  X.fillText('出售 💰+' + Math.floor((CT[c.type]||{}).cost * 0.6), px+100, py+318);
+}
+
+function drawMinions() {
+  // 低血量警告
+  if (G.hp <= 5) {
+    X.fillStyle = 'rgba(255,0,0,' + (0.1 + 0.05*Math.sin(Date.now()*0.01)) + ')';
+    X.fillRect(0, 0, G.W, G.H);
+  }
+}
+
+/* ========= 工具函数 ========= */
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function dist(a, b) {
+  var dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function closestZombie(x, y, range) {
+  var best = null, bestD = range || 99999;
+  for (var i = 0; i < G.zombies.length; i++) {
+    var z = G.zombies[i];
+    if (!z.alive) continue;
+    var d = dist(z, {x:x,y:y});
+    if (d < bestD) { bestD = d; best = z; }
+  }
+  return best;
+}
+
+/* ========= 更新逻辑 ========= */
+function update(dt) {
+  // 生成僵尸
+  if (G.waveActive && G.spawnCount < G.spawnTotal) {
+    G.spawnTimer += dt;
+    var interval = Math.max(200, 800 - G.wave * 30);
+    if (G.spawnTimer >= interval) {
+      G.spawnTimer = 0;
+      var typePool = [0,0,0,1,1,2];
+      if (G.wave >= 3) typePool.push(3,3);
+      if (G.wave >= 8) typePool.push(2,2);
+      var ti = typePool[Math.floor(Math.random()*typePool.length)];
+      var z = spawnZombie(ti);
+      // 从右侧进入
+      z.x = G.W + 30;
+      z.y = getSpawnY();
+      G.zombies.push(z);
+      G.spawnCount++;
+    }
+  }
+
+  // 检查波次结束
+  if (G.waveActive && G.spawnCount >= G.spawnTotal) {
+    var anyAlive = false;
+    for (var i = 0; i < G.zombies.length; i++) if (G.zombies[i].alive) { anyAlive = true; break; }
+    if (!anyAlive) {
+      G.waveActive = false;
+      G.waveDelay = 180; // 3秒后可用
+    }
+  }
+
+  if (!G.waveActive && G.waveDelay > 0) {
+    G.waveDelay -= 1;
+  }
+
+  // 更新炮台
+  for (var i = 0; i < G.canns.length; i++) {
+    var c = G.canns[i];
+    if (c.type < 0) continue;
+    var t = CT[c.type];
+    var range = c.rng || t.rng;
+    var target = closestZombie(c.x, c.y, range);
+    if (target) {
+      c.angle = Math.atan2(target.y - c.y, target.x - c.x);
+      c.timer += dt;
+      var rate = c.rate || t.rate;
+      if (c.timer >= rate) {
+        c.timer = 0;
+        fireBullet(c, target.x, target.y);
+        // 开炮后坐力震屏
+        if (c.type === 3) { G.shakeTimer = 4; G.shakeIntensity = 3; }
+      }
+    }
+    // 冰霜炮减速效果
+    if (c.type === 5) {
+      var tz = closestZombie(c.x, c.y, range);
+      if (tz && tz.alive) {
+        tz.slowTimer = 20;
+      }
+    }
+  }
+
+  // 更新僵尸
+  for (var i = 0; i < G.zombies.length; i++) {
+    var z = G.zombies[i];
+    if (!z.alive) continue;
+    // 移动（向最近的炮台或向左）
+    var targetCann = null, td = 99999;
+    for (var j = 0; j < G.canns.length; j++) {
+      if (G.canns[j].type < 0) continue;
+      var d = dist(z, G.canns[j]);
+      if (d < td) { td = d; targetCann = G.canns[j]; }
+    }
+    if (targetCann) {
+      var a = Math.atan2(targetCann.y - z.y, targetCann.x - z.x);
+      var spd = z.spd;
+      if (z.slowTimer > 0) { spd *= 0.4; z.slowTimer--; }
+      if (!z.fly) {
+        z.x += Math.cos(a) * spd;
+        z.y += Math.sin(a) * spd;
+      } else {
+        // 飞行单位直线前进
+        z.x -= spd * 0.8;
+      }
+    }
+    // 到达左侧
+    if (z.x < 30) {
+      z.alive = false;
+      G.hp--;
+      G.shakeTimer = 8; G.shakeIntensity = 6;
+      spawnParticles(z.x, z.y, '#f44336', 8, 2);
+      if (G.hp <= 0) G.state = 'gameover';
+    }
+  }
+
+  // 更新子弹
+  for (var i = 0; i < G.bullets.length; i++) {
+    var b = G.bullets[i];
+    if (b.isLaser) {
+      b.life--;
+      // 激光持续伤害
+      for (var j = 0; j < G.zombies.length; j++) {
+        var z = G.zombies[j];
+        if (!z.alive) continue;
+        var dx = z.x - b.x, dy = z.y - b.y;
+        var dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist < 20) {
+          z.hp -= b.dmg * dt/1000;
+          z.hitFlash = 4;
+          if (z.hp <= 0) killZombie(z, j);
+        }
+      }
+      continue;
+    }
+    b.x += b.vx;
+    b.y += b.vy;
+    b.life--;
+
+    // 碰撞检测
+    for (var j = 0; j < G.zombies.length; j++) {
+      var z = G.zombies[j];
+      if (!z.alive) continue;
+      if (Math.abs(b.x - z.x) < z.sz + b.r && Math.abs(b.y - z.y) < z.sz + b.r) {
+        z.hp -= b.dmg;
+        z.hitFlash = 6;
+        if (b.expDmg > 0) {
+          spawnExplosion(b.x, b.y, b.expR || 40, b.expDmg);
+        }
+        spawnParticles(b.x, b.y, b.color, 4, 1.5);
+        if (z.hp <= 0) killZombie(z, j);
+        b.pierce--;
+        if (b.pierce <= 0) { b.life = 0; break; }
+      }
+    }
+  }
+  // 清理
+  G.bullets = G.bullets.filter(function(b){ return b.life > 0; });
+  G.zombies = G.zombies.filter(function(z){ return z.alive; });
+
+  // 更新粒子
+  for (var i = 0; i < G.particles.length; i++) {
+    var p = G.particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.05; // 重力
+    p.life--;
+  }
+  G.particles = G.particles.filter(function(p){ return p.life > 0; });
+
+  // 更新浮动文字
+  for (var i = 0; i < G.floatingTexts.length; i++) {
+    var ft = G.floatingTexts[i];
+    ft.y += ft.vy;
+    ft.life--;
+  }
+  G.floatingTexts = G.floatingTexts.filter(function(ft){ return ft.life > 0; });
+
+  // 震屏
+  if (G.shakeTimer > 0) G.shakeTimer--;
+}
+
+/* ========= 主循环 ========= */
+function gameLoop(ts) {
+  if (!G.lastTime) G.lastTime = ts;
+  var dt = Math.min(ts - G.lastTime, 50);
+  G.lastTime = ts;
+
+  if (G.state === 'playing') {
+    update(dt);
+  }
+
+  // 震屏偏移
+  X.save();
+  if (G.shakeTimer > 0) {
+    var sx = (Math.random()-0.5) * G.shakeIntensity * 2;
+    var sy = (Math.random()-0.5) * G.shakeIntensity * 2;
+    X.translate(sx, sy);
+  }
+
+  // 绘制
+  X.fillStyle = '#212121';
+  X.fillRect(-10, -10, G.W+20, G.H+20);
+
+  drawGround();
+
+  // 道路上的僵尸（行走在地面）
+  for (var i = 0; i < G.zombies.length; i++) {
+    if (G.zombies[i].fly) continue;
+    drawZombie(G.zombies[i]);
+  }
+  // 飞行僵尸在上层
+  for (var i = 0; i < G.zombies.length; i++) {
+    if (!G.zombies[i].fly) continue;
+    drawZombie(G.zombies[i]);
+  }
+
+  // 炮台
+  for (var i = 0; i < G.canns.length; i++) drawCannon(G.canns[i]);
+
+  // 子弹
+  for (var i = 0; i < G.bullets.length; i++) drawBullet(G.bullets[i]);
+
+  drawParticles();
+  drawFloatingTexts();
+  drawHUD();
+  drawMinions();
+
+  if (G.selectedCann && G.selectedCann.type >= 0) drawUpgradePanel();
+  drawShop();
+
+  // Game Over
+  if (G.state === 'gameover') {
+    X.fillStyle = 'rgba(0,0,0,0.75)';
+    X.fillRect(0, 0, G.W, G.H);
+    X.fillStyle = '#f44336';
+    X.font = 'bold 48px sans-serif';
+    X.textAlign = 'center';
+    X.fillText('GAME OVER', G.W/2, G.H/2 - 20);
+    X.fillStyle = '#fff';
+    X.font = '20px sans-serif';
+    X.fillText('坚持了 ' + G.wave + ' 波僵尸', G.W/2, G.H/2 + 20);
+    X.fillStyle = 'rgba(76,175,80,0.9)';
+    roundRect(X, G.W/2-80, G.H/2+40, 160, 40, 8);
+    X.fill();
+    X.fillStyle = '#fff';
+    X.font = 'bold 16px sans-serif';
+    X.fillText('重新开始', G.W/2, G.H/2+66);
+  }
+
+  X.restore();
+  requestAnimationFrame(gameLoop);
+}
+
+/* ========= 事件 ========= */
+C.addEventListener('mousemove', function(e) {
+  var r = C.getBoundingClientRect();
+  G.mouseX = e.clientX - r.left;
+  G.mouseY = e.clientY - r.top;
+});
+
+C.addEventListener('click', function(e) {
+  var r = C.getBoundingClientRect();
+  var mx = e.clientX - r.left;
+  var my = e.clientY - r.top;
+
+  if (G.state === 'gameover') {
+    // 重新开始
+    if (mx > G.W/2-80 && mx < G.W/2+80 && my > G.H/2+40 && my < G.H/2+80) {
+      resetGame();
+    }
+    return;
+  }
+
+  // 商店打开时
+  if (G.shopOpen) {
+    // 关闭按钮
+    if (mx > G.W-140 && mx < G.W-70 && my > 50 && my < 80) {
+      G.shopOpen = false;
+      return;
+    }
+    // 购买炮台
+    var startX = 90, startY = 100;
+    for (var i = 0; i < CT.length; i++) {
+      var t = CT[i];
+      var bx = startX + (i % 3) * 260;
+      var by = startY + Math.floor(i / 3) * 120;
+      if (mx > bx && mx < bx+240 && my > by && my < by+100) {
+        // 购买 - 找一个空位
+        if (G.gold >= t.cost || t.cost === 0) {
+          for (var j = 0; j < G.canns.length; j++) {
+            if (G.canns[j].type < 0) {
+              G.canns[j].type = i;
+              G.canns[j].level = 1;
+              G.canns[j].totalKill = 0;
+              G.canns[j]._uid = 'cann_' + Date.now() + '_' + j;
+              G.gold -= t.cost;
+              applyCannUpgrades();
+              break;
+            }
+          }
+        }
+        return;
+      }
+    }
+    return;
+  }
+
+  // 升级面板按钮
+  if (G.selectedCann && G.selectedCann.type >= 0) {
+    var c = G.selectedCann;
+    var px = G.W - 220, py = 60;
+    var ups = ['d','r','g','e'];
+    for (var i = 0; i < 4; i++) {
+      var uy = py + 64 + i * 65;
+      // 升级按钮
+      if (mx > px+110 && mx < px+178 && my > uy+34 && my < uy+54) {
+        var u = G.ups[c._uid];
+        var key = ups[i];
+        var cost = UE[key].cost0 + u[key].lv * UE[key].costInc;
+        if (G.gold >= cost && u[key].lv < 10) {
+          G.gold -= cost;
+          u[key].lv++;
+          applyCannUpgrades();
+        }
+        return;
+      }
+    }
+    // 出售按钮
+    if (mx > px+10 && mx < px+190 && my > py+300 && my < py+328) {
+      G.gold += Math.floor(CT[c.type].cost * 0.6);
+      c.type = -1;
+      c.level = 1; c.totalKill = 0;
+      G.selectedCann = null;
+      applyCannUpgrades();
+      return;
+    }
+  }
+
+  // 开始波次按钮
+  if (!G.waveActive && G.waveDelay <= 0) {
+    if (mx > G.W-160 && mx < G.W-12 && my > 6 && my < 38) {
+      startWave();
+      return;
+    }
+  }
+
+  // 选择炮台
+  for (var i = 0; i < G.canns.length; i++) {
+    var c = G.canns[i];
+    if (c.type < 0) {
+      // 点击空格子打开商店
+      if (Math.abs(mx - c.x) < 28 && Math.abs(my - c.y) < 28) {
+        G.shopOpen = true;
+        G.selectedCann = null;
+        return;
+      }
+    } else {
+      if (dist({x:mx,y:my}, c) < 30) {
+        G.selectedCann = c;
+        G.shopOpen = false;
+        return;
+      }
+    }
+  }
+
+  // 点击空白关闭面板
+  G.selectedCann = null;
+  G.shopOpen = false;
+});
+
+/* ========= 键盘快捷键 ========= */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'b' || e.key === 'B') {
+    G.shopOpen = !G.shopOpen;
+    if (G.shopOpen) G.selectedCann = null;
+  }
+  if (e.key === ' ' || e.key === 'Spacebar') {
+    if (!G.waveActive && G.waveDelay <= 0) startWave();
+  }
+});
+
+/* ========= 重置游戏 ========= */
+function resetGame() {
+  G.state = 'playing';
+  G.wave = 0; G.gold = 600; G.hp = 20;
+  G.zombies = []; G.bullets = []; G.particles = [];
+  G.floatingTexts = [];
+  G.waveActive = false; G.waveDelay = 0;
+  G.selectedCann = null; G.shopOpen = false;
+  G.ups = {};
+  G.canns = [];
+  initCannons();
+  applyCannUpgrades();
+}
+
+/* ========= 启动 ========= */
+G.ups = {};
+initCannons();
+// 给初始炮台UID
+for (var i = 0; i < G.canns.length; i++) {
+  if (G.canns[i].type >= 0) {
+    G.canns[i]._uid = 'cann_' + Date.now() + '_' + i;
+  }
+}
+applyCannUpgrades();
+
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

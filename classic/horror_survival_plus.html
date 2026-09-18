@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>黑暗侵袭：救援行动</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Microsoft YaHei',sans-serif;user-select:none}
+canvas{display:block;cursor:none;max-width:100vw;max-height:100vh;image-rendering:pixelated}
+#upgradePanel,#skillPanel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,5,20,0.96);border:2px solid #8844cc;border-radius:10px;padding:24px;z-index:100;color:#eee;min-width:520px;max-width:600px;max-height:85vh;overflow-y:auto}
+#upgradePanel h2,#skillPanel h2{text-align:center;color:#cc88ff;font-size:22px;margin-bottom:16px;text-shadow:0 0 10px #8844cc}
+.upg-weapon{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;margin-bottom:10px}
+.upg-weapon h3{color:#ffaa44;font-size:15px;margin-bottom:8px}
+.upg-stat{display:flex;align-items:center;justify-content:space-between;margin:5px 0;font-size:13px}
+.upg-stat .stat-name{color:#aaa;width:80px}
+.upg-stat .stat-bar{flex:1;height:8px;background:#1a1a2e;border-radius:4px;overflow:hidden}
+.upg-stat .stat-fill{height:100%;background:linear-gradient(90deg,#4488ff,#8844ff);border-radius:4px;transition:width 0.3s}
+.upg-stat .stat-lv{color:#ffcc44;width:60px;text-align:center;font-size:12px}
+.upg-btn{background:linear-gradient(135deg,#8844cc,#6622aa);color:#fff;border:none;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:12px;font-family:inherit}
+.upg-btn:hover{background:linear-gradient(135deg,#aa66ff,#8844cc)}
+.upg-btn:disabled{opacity:0.35;cursor:default}
+.gold-display{text-align:center;color:#ffcc44;font-size:16px;margin-bottom:12px;font-weight:bold}
+.skill-tree{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.skill-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;text-align:center;cursor:pointer;transition:all 0.2s}
+.skill-card:hover{border-color:#4488ff;background:rgba(68,136,255,0.1)}
+.skill-card.learned{border-color:#44ff88;background:rgba(68,255,136,0.08)}
+.skill-card .skill-icon{font-size:28px;margin-bottom:6px}
+.skill-card .skill-name{color:#fff;font-size:13px;font-weight:bold}
+.skill-card .skill-desc{color:#999;font-size:11px;margin-top:4px}
+.skill-card .skill-cost{color:#ffcc44;font-size:12px;margin-top:6px}
+.sp-display{text-align:center;color:#44ff88;font-size:16px;margin-bottom:12px;font-weight:bold}
+#storyBox{display:none;position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(5,5,15,0.95);border:2px solid #cc4444;border-radius:10px;padding:20px 28px;z-index:90;color:#eee;min-width:500px;max-width:700px}
+#storyBox .speaker{color:#ff6644;font-size:14px;font-weight:bold;margin-bottom:8px}
+#storyBox .dialogue{font-size:15px;line-height:1.6;color:#ddd}
+#storyBox .continue-hint{text-align:right;color:#888;font-size:12px;margin-top:10px;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:0.5}50%{opacity:1}}
+.emma-hud{position:fixed;top:60px;right:20px;background:rgba(0,0,0,0.7);border:1px solid rgba(255,100,100,0.4);border-radius:8px;padding:8px 14px;color:#ff8888;font-size:13px;z-index:50;display:none}
+</style>
+</head>
+<body>
+<canvas id="C"></canvas>
+<div id="upgradePanel">
+  <h2>🔧 武器升级</h2>
+  <div class="gold-display" id="goldDisp">金币: 0</div>
+  <div id="upgradeContent"></div>
+  <div style="text-align:center;margin-top:14px">
+    <button class="upg-btn" onclick="closeUpgrade()" style="padding:8px 30px">关闭 [U]</button>
+  </div>
+</div>
+<div id="skillPanel">
+  <h2>🌟 技能树</h2>
+  <div class="sp-display" id="spDisp">技能点: 0</div>
+  <div class="skill-tree" id="skillTree"></div>
+  <div style="text-align:center;margin-top:14px">
+    <button class="upg-btn" onclick="closeSkillTree()" style="padding:8px 30px">关闭 [T]</button>
+  </div>
+</div>
+<div id="storyBox">
+  <div class="speaker" id="storySpeaker"></div>
+  <div class="dialogue" id="storyDialogue"></div>
+  <div class="continue-hint">点击继续...</div>
+</div>
+<div class="emma-hud" id="emmaHud">
+  ❤️ 艾玛的生命值: <span id="emmaHp">100</span>
+</div>
+
+<script>
+"use strict";
+var CV=document.getElementById('C');
+var CX=CV.getContext('2d');
+var W=1280,H=720;
+CV.width=W;CV.height=H;
+
+// ==================== GAME STATE ====================
+var G={
+  state:'title',chapter:1,wave:0,score:0,combo:0,comboTimer:0,
+  hp:100,maxHp:100,
+  ammo:12,reloading:false,reloadTimer:0,
+  weapon:0,weaponLevel:[1,0,0,0],
+  enemies:[],bullets:[],particles:[],floatTexts:[],bloodPools:[],
+  shakeX:0,shakeY:0,shakeT:0,
+  mx:W/2,my:H/2,px:W/2,py:H/2,pangle:0,
+  flashTimer:0,flashColor:'rgba(255,0,0,',
+  waveTimer:0,waveActive:false,spawnLeft:0,spawnTimer:0,
+  keys:{},killsThisWave:0,godMode:false,
+  gold:0,waveClearTimer:0,waveBannerTimer:0,waveBannerBoss:false,
+  skillPoints:0,showUpgrade:false,
+  weaponUpgrades:{0:{dmg:0,rate:0,reload:0,ammo:0,spread:0},1:{dmg:0,rate:0,reload:0,ammo:0,spread:0},2:{dmg:0,rate:0,reload:0,ammo:0,spread:0},3:{dmg:0,rate:0,reload:0,ammo:0,spread:0}},
+  skills:{hpBoost:0,speedBoost:0,crit:0,xpBoost:0,secondWind:0,shield:0,healAura:0},
+  emma:null,emmaRescued:false,emmaEscorted:false,
+  storyQueue:[],storyIdx:0,storyCb:null,storyShowing:false,
+  chapterTitle:'',chapterTitleTimer:0,
+  objective:'',secondWindUsed:false,shieldHp:0,healTimer:0,
+  lastShotTime:0,damageFlash:0,killStreak:0,killStreakTimer:0,
+  totalKills:0,wavesCleared:0,bossSpawned:false
+};
+
+// ==================== WEAPONS ====================
+var WEAPONS=[
+  {name:'手枪',  baseDmg:35, baseAmmo:12, baseReload:1200, baseSpread:0.04, baseSpd:14, shots:1, auto:false, color:'#f0a000', knockback:3},
+  {name:'霰弹枪',baseDmg:20, baseAmmo:6,  baseReload:2000, baseSpread:0.25, baseSpd:12, shots:7, auto:false, color:'#e05010', knockback:8},
+  {name:'冲锋枪',baseDmg:18, baseAmmo:30, baseReload:1500, baseSpread:0.10, baseSpd:16, shots:1, auto:true,  color:'#30c0f0', knockback:1},
+  {name:'火焰枪',baseDmg:8,  baseAmmo:40, baseReload:2200, baseSpread:0.30, baseSpd:8,  shots:5, auto:true,  color:'#ff6010', knockback:0, flame:true},
+];
+
+function getWeaponStats(idx){
+  var w=WEAPONS[idx], up=G.weaponUpgrades[idx];
+  return {
+    dmg:Math.floor(w.baseDmg*(1+up.dmg*0.20)),
+    ammo:Math.floor(w.baseAmmo*(1+up.ammo*0.25)),
+    reload:Math.floor(w.baseReload*(1-up.reload*0.18)),
+    spread:w.baseSpread*(1-up.spread*0.28),
+    fireDelay:Math.max(80, w.baseSpd*(1-up.rate*0.12)),
+    shots:w.shots,auto:w.auto,color:w.color,
+    knockback:w.knockback+(up.dmg>=3?2:0),flame:w.flame
+  };
+}
+
+function getUpgradeCost(wi, sn){
+  var lv=G.weaponUpgrades[wi][sn];
+  if(lv>=5) return 99999;
+  return [100,200,400,800,1500][lv]||99999;
+}
+
+var STAT_NAMES={dmg:'伤害',rate:'射速',reload:'换弹速度',ammo:'弹匣容量',spread:'精准度'};
+
+// ==================== SKILLS ====================
+var SKILL_DEFS=[
+  {id:'hpBoost',   name:'生命强化', icon:'❤️', desc:'每级+20最大生命值', maxLv:5, cost:2},
+  {id:'speedBoost', name:'敏捷步伐', icon:'👟', desc:'每级+10%移动速度', maxLv:3, cost:2},
+  {id:'crit',       name:'致命打击', icon:'💥', desc:'每级+8%暴击率', maxLv:5, cost:3},
+  {id:'xpBoost',    name:'寻宝直觉', icon:'💰', desc:'每级+15%金币获取', maxLv:3, cost:2},
+  {id:'secondWind', name:'不屈意志', icon:'🛡️', desc:'死亡时自动复活一次(满血50%)', maxLv:1, cost:5},
+  {id:'shield',     name:'能量护盾', icon:'🔮', desc:'每级+30护盾值', maxLv:3, cost:3},
+  {id:'healAura',   name:'治愈光环', icon:'💚', desc:'每级每秒恢复1HP', maxLv:3, cost:3},
+];
+
+// ==================== ENEMIES ====================
+var ETYPES=[
+  {name:'腐尸',    hp:80,  spd:0.85, dmg:10, reward:10, sz:22, color:'#4a6a3a'},
+  {name:'暴走尸',  hp:55,  spd:2.2,  dmg:14, reward:15, sz:18, color:'#6a4a3a'},
+  {name:'巨尸',    hp:350, spd:0.55, dmg:30, reward:40, sz:34, color:'#3a4a2a'},
+  {name:'怨灵',    hp:50,  spd:1.8,  dmg:8,  reward:20, sz:20, color:'#6a5aaa',ghost:true},
+  {name:'骷髅兵',  hp:65,  spd:1.1,  dmg:12, reward:18, sz:20, color:'#8a8a7a'},
+  {name:'炎魔',    hp:200, spd:1.3,  dmg:25, reward:60, sz:28, color:'#aa4a1a'},
+  {name:'死亡使者',hp:1200,spd:0.7,  dmg:50, reward:200,sz:45, color:'#8a1a3a',boss:true},
+];
+
+// ==================== STORY ====================
+var STORY_CHAPTERS=[
+  {
+    title:'第一章：黑暗墓地',
+    intro:[
+      {speaker:'📻 系统',text:'深夜，你接到求救信号——艾玛被困在废弃墓园深处...'},
+      {speaker:'🔫 你',text:'坚持住艾玛，我来了...'},
+      {speaker:'📻 系统',text:'消灭所有波次的怪物，找到牢房钥匙！'},
+    ],
+    waves:5,
+    objective:'消灭5波怪物，找到牢房钥匙',
+    onComplete:function(){
+      showStory([
+        {speaker:'📻 系统',text:'你找到了牢房钥匙...但门后只有一张纸条。'},
+        {speaker:'📜 纸条',text:'"她在上面的豪宅里...别相信你看到的一切。"'},
+        {speaker:'🔫 你',text:'该死...得继续往上走。'},
+      ],function(){G.chapter=2;setTimeout(function(){startChapter(2);},500);});
+    }
+  },
+  {
+    title:'第二章：诅咒豪宅',
+    intro:[
+      {speaker:'📻 系统',text:'你进入了废弃豪宅——这里是怪物的巢穴。'},
+      {speaker:'😰 艾玛(微弱的呼救)',text:'救...救命...有人在吗...'},
+      {speaker:'📻 系统',text:'找到艾玛！注意保护她！'},
+    ],
+    waves:6,
+    objective:'找到艾玛并保护她存活',
+    onComplete:function(){
+      showStory([
+        {speaker:'😊 艾玛',text:'谢谢你...我终于自由了...但我们还没脱离危险！'},
+        {speaker:'🔫 你',text:'跟我走，我带你出去。'},
+        {speaker:'📻 系统',text:'撤离点在前方...但死亡使者出现了！！'},
+      ],function(){G.chapter=3;G.emmaEscorted=true;setTimeout(function(){startChapter(3);},500);});
+    }
+  },
+  {
+    title:'第三章：最终撤离',
+    intro:[
+      {speaker:'😰 艾玛',text:'谢谢你...但我走不动了，你先走吧...'},
+      {speaker:'🔫 你',text:'别废话，我不会丢下你的。'},
+      {speaker:'📻 系统',text:'死亡使者正在逼近！保护艾玛，撑到救援到达！'},
+    ],
+    waves:10,
+    objective:'保护艾玛，击败死亡使者！',
+    onComplete:function(){
+      G.state='victory';
+      showStory([
+        {speaker:'🚁 救援队',text:'救援直升机到达！快上来！'},
+        {speaker:'😊 艾玛',text:'我们...我们活下来了...'},
+        {speaker:'🔫 你',text:'这一切终于结束了...'},
+        {speaker:'🏆 系统',text:'🎉 恭喜通关！感谢游玩《黑暗侵袭：救援行动》'},
+      ],function(){});
+    }
+  }
+];
+
+// ==================== MAP DATA ====================
+var MAP_GRAVES=[];
+var MAP_TREES=[];
+var MAP_LIGHTS=[];
+var MAP_FOG=[];
+for(var i=0;i<25;i++){
+  MAP_GRAVES.push({x:80+Math.random()*(W-160),y:180+Math.random()*(H-280),rot:(Math.random()-0.5)*0.18,type:Math.floor(Math.random()*3),moss:Math.random()>0.5});
+}
+for(var i=0;i<12;i++){
+  MAP_TREES.push({x:30+Math.random()*(W-60),y:100+Math.random()*(H-200),h:60+Math.random()*80,sway:Math.random()*Math.PI*2});
+}
+for(var i=0;i<6;i++){
+  MAP_LIGHTS.push({x:80+Math.random()*(W-160),y:130+Math.random()*(H-200),phase:Math.random()*Math.PI*2,flicker:0.7+Math.random()*0.3});
+}
+for(var i=0;i<18;i++){
+  MAP_FOG.push({x:Math.random()*W,y:H*0.5+Math.random()*(H*0.5),vx:0.15+Math.random()*0.25,vy:(Math.random()-0.5)*0.05,w:200+Math.random()*300,h:30+Math.random()*50,a:0.04+Math.random()*0.06,phase:Math.random()*Math.PI*2});
+}
+
+// ==================== DRAW BACKGROUND ====================
+function drawBG(t){
+  var sg=CX.createLinearGradient(0,0,0,H*0.45);
+  var skyTop=G.chapter===1?'#060310':G.chapter===2?'#100808':'#080810';
+  var skyMid=G.chapter===1?'#0a0520':G.chapter===2?'#1a0808':'#101020';
+  var skyBot=G.chapter===1?'#12082a':G.chapter===2?'#2a0a0a':'#181830';
+  sg.addColorStop(0,skyTop);sg.addColorStop(0.5,skyMid);sg.addColorStop(1,skyBot);
+  CX.fillStyle=sg;CX.fillRect(0,0,W,H*0.45);
+  // moon
+  CX.save();CX.shadowColor='#c8c0ff';CX.shadowBlur=40;
+  CX.fillStyle='#e8e0f8';CX.beginPath();CX.arc(W-180,75,38,0,Math.PI*2);CX.fill();
+  CX.shadowBlur=0;CX.fillStyle='#c0b8e0';CX.beginPath();CX.arc(W-158,62,28,0,Math.PI*2);CX.fill();
+  CX.fillStyle='#e8e0f8';CX.beginPath();CX.arc(W-178,74,36,0,Math.PI*2);CX.fill();CX.restore();
+  // stars
+  CX.save();
+  for(var i=0;i<60;i++){var sx=((i*137.5)%W),sy=((i*89.3)%(H*0.4)),sa=0.3+0.7*Math.abs(Math.sin(t*0.8+i));CX.globalAlpha=sa*0.8;CX.fillStyle='#fff';CX.beginPath();CX.arc(sx,sy,0.6+Math.sin(i)*0.4,0,Math.PI*2);CX.fill();}
+  CX.globalAlpha=1;CX.restore();
+  // silhouettes
+  CX.fillStyle='#060210';
+  for(var i=0;i<40;i++){var tx=i*(W/38),th=50+Math.sin(i*1.7)*30+Math.cos(i*0.9)*20;CX.beginPath();CX.moveTo(tx-18,H*0.45);CX.lineTo(tx+18,H*0.45);CX.lineTo(tx+10,H*0.45-th*0.5);CX.lineTo(tx+18,H*0.45-th*0.4);CX.lineTo(tx+4,H*0.45-th);CX.lineTo(tx-4,H*0.45-th);CX.lineTo(tx-18,H*0.45-th*0.4);CX.lineTo(tx-10,H*0.45-th*0.5);CX.closePath();CX.fill();}
+  // ground
+  var gcol1=G.chapter===1?'#1a1208':G.chapter===2?'#1a0a06':'#0a0a12';
+  var gcol2=G.chapter===1?'#0e0c06':G.chapter===2?'#0e0503':'#050508';
+  var gcol3=G.chapter===1?'#050402':G.chapter===2?'#050203':'#020204';
+  var gg=CX.createLinearGradient(0,H*0.45,0,H);
+  gg.addColorStop(0,gcol1);gg.addColorStop(0.3,gcol2);gg.addColorStop(1,gcol3);
+  CX.fillStyle=gg;CX.fillRect(0,H*0.45,W,H*0.55);
+  // grass detail
+  CX.strokeStyle='rgba(20,40,10,0.3)';CX.lineWidth=1;
+  for(var i=0;i<W;i+=8){var gh=2+Math.sin(i*0.3+t*0.5)*2;CX.beginPath();CX.moveTo(i,H*0.45);CX.lineTo(i+1,H*0.45-gh);CX.stroke();}
+  // blood pools
+  for(var i=0;i<G.bloodPools.length;i++){var bp=G.bloodPools[i];if(bp.alpha<=0)continue;
+    CX.globalAlpha=bp.alpha*0.6;var bg=CX.createRadialGradient(bp.x,bp.y,0,bp.x,bp.y,bp.r);
+    bg.addColorStop(0,'#8b0000');bg.addColorStop(0.6,'#5c0000');bg.addColorStop(1,'transparent');
+    CX.fillStyle=bg;CX.beginPath();CX.ellipse(bp.x,bp.y,bp.r,bp.r*0.4,0,0,Math.PI*2);CX.fill();
+  }CX.globalAlpha=1;
+}
+
+// ==================== DRAW GRAVES & PROPS ====================
+function drawGraves(t){
+  for(var i=0;i<MAP_GRAVES.length;i++){var g=MAP_GRAVES[i];CX.save();CX.translate(g.x,g.y);CX.rotate(g.rot);
+    CX.fillStyle='rgba(0,0,0,0.4)';CX.beginPath();CX.ellipse(2,18,12,4,0,0,Math.PI*2);CX.fill();
+    if(g.type===0){CX.fillStyle=g.moss?'#2a3028':'#353530';CX.beginPath();CX.arc(0,-10,12,Math.PI,0);CX.lineTo(12,10);CX.lineTo(-12,10);CX.closePath();CX.fill();CX.fillStyle=g.moss?'#1a2018':'#252520';CX.fillRect(-12,0,24,12);}
+    else if(g.type===1){CX.fillStyle=g.moss?'#28302a':'#303030';CX.fillRect(-10,-22,20,32);CX.fillStyle='rgba(255,255,255,0.06)';CX.font='6px serif';CX.textAlign='center';CX.fillText('R.I.P',0,-10);}
+    else{CX.fillStyle=g.moss?'#2a2830':'#383830';CX.fillRect(-3,-22,6,14);CX.fillRect(-10,-8,20,20);CX.fillStyle='rgba(255,255,255,0.06)';CX.beginPath();CX.arc(0,-10,6,Math.PI,Math.PI*2);CX.fill();}
+    CX.restore();}
+  // lights
+  if(G.chapter<=2){for(var i=0;i<MAP_LIGHTS.length;i++){var l=MAP_LIGHTS[i];l.phase+=0.03;var fk=l.flicker*(0.7+0.3*Math.sin(l.phase));CX.save();CX.translate(l.x,l.y);CX.fillStyle='#3a1a00';CX.fillRect(-2,-30,4,30);CX.globalAlpha=fk*0.5;var lg=CX.createRadialGradient(0,-36,0,0,-36,80);lg.addColorStop(0,'rgba(255,180,50,0.8)');lg.addColorStop(0.5,'rgba(255,80,0,0.3)');lg.addColorStop(1,'transparent');CX.fillStyle=lg;CX.beginPath();CX.arc(0,-36,80,0,Math.PI*2);CX.fill();CX.globalAlpha=1;CX.fillStyle='#ff8800';CX.shadowColor='#ff8800';CX.shadowBlur=15;CX.beginPath();CX.arc(0,-36,5,0,Math.PI*2);CX.fill();CX.shadowBlur=0;CX.restore();}}
+  // fog
+  for(var i=0;i<MAP_FOG.length;i++){var f=MAP_FOG[i];f.x+=f.vx;if(f.x>W+f.w)f.x=-f.w;var fa=f.a*(0.7+0.3*Math.sin(f.phase));f.phase+=0.008;CX.globalAlpha=fa;CX.fillStyle='#8090b0';CX.beginPath();CX.ellipse(f.x,f.y+Math.sin(f.phase)*5,f.w*0.5,f.h*0.5,0,0,Math.PI*2);CX.fill();}CX.globalAlpha=1;
+  // trees
+  for(var i=0;i<MAP_TREES.length;i++){var tr=MAP_TREES[i];tr.sway+=0.01;var sw=Math.sin(tr.sway)*3;CX.save();CX.translate(tr.x,tr.y);CX.fillStyle='#1a1208';CX.fillRect(-4,0,8,tr.h*0.35);var cl=['#0a1408','#0c1a0a','#0e200c'];for(var j=0;j<3;j++){CX.save();CX.translate(sw*(j+1)*0.3,0);CX.fillStyle=cl[j];CX.beginPath();CX.moveTo(0,-tr.h-j*15);CX.lineTo(-16-j*8,-tr.h*0.5+j*10);CX.lineTo(16+j*8,-tr.h*0.5+j*10);CX.closePath();CX.fill();CX.restore();}CX.restore();}
+}
+
+// ==================== DRAW PLAYER ====================
+function drawPlayer(t){
+  var spdBonus=1+G.skills.speedBoost*0.10;
+  CX.save();CX.translate(G.px,G.py);
+  CX.rotate(G.pangle);
+  // body
+  CX.fillStyle='#2a3a4a';
+  CX.beginPath();CX.arc(0,0,16,0,Math.PI*2);CX.fill();
+  CX.fillStyle='#3a5060';
+  CX.beginPath();CX.arc(0,-2,13,0,Math.PI*2);CX.fill();
+  // gun
+  var ws=getWeaponStats(G.weapon);
+  CX.fillStyle=ws.color;
+  CX.fillRect(14,-4,22,8);
+  CX.fillStyle='rgba(255,255,255,0.15)';
+  CX.fillRect(16,-2,18,4);
+  // muzzle flash
+  if(G.flashTimer>0){CX.globalAlpha=G.flashTimer/120;CX.fillStyle='#ffee88';CX.shadowColor='#ff8800';CX.shadowBlur=20;CX.beginPath();CX.arc(38,0,8+Math.random()*6,0,Math.PI*2);CX.fill();CX.shadowBlur=0;CX.globalAlpha=1;}
+  CX.restore();
+  // shield effect
+  if(G.shieldHp>0){CX.save();CX.translate(G.px,G.py);CX.globalAlpha=0.35;CX.strokeStyle='#4488ff';CX.lineWidth=2;CX.setLineDash([8,6]);CX.beginPath();CX.arc(0,0,26+(t*30)%10,0,Math.PI*2);CX.stroke();CX.setLineDash([]);CX.fillStyle='rgba(68,136,255,0.08)';CX.beginPath();CX.arc(0,0,24,0,Math.PI*2);CX.fill();CX.restore();}
+  // damage flash
+  if(G.damageFlash>0){CX.save();CX.globalAlpha=G.damageFlash*0.4;CX.fillStyle='#ff0000';CX.fillRect(0,0,W,H);CX.restore();}
+}
+
+// ==================== DRAW EMMA ====================
+function drawEmma(t){
+  if(!G.emma)return;
+  var em=G.emma;
+  CX.save();CX.translate(em.x,em.y);
+  // body - dress
+  CX.fillStyle='#4466aa';
+  CX.beginPath();CX.arc(0,0,14,0,Math.PI*2);CX.fill();
+  CX.fillStyle='#5577bb';
+  CX.beginPath();CX.arc(0,-2,11,0,Math.PI*2);CX.fill();
+  // hair
+  CX.fillStyle='#cc9955';
+  CX.beginPath();CX.arc(0,-5,9,Math.PI,Math.PI*2);CX.fill();
+  CX.fillRect(-9,-5,4,16);CX.fillRect(5,-5,4,16);
+  // face
+  CX.fillStyle='#eeccaa';
+  CX.beginPath();CX.arc(0,0,7,0,Math.PI*2);CX.fill();
+  // eyes
+  CX.fillStyle='#333';
+  CX.beginPath();CX.arc(-2.5,-1,1.5,0,Math.PI*2);CX.fill();
+  CX.beginPath();CX.arc(2.5,-1,1.5,0,Math.PI*2);CX.fill();
+  // scared expression when hurt
+  if(em.hp<em.maxHp*0.4){CX.fillStyle='#aa3333';CX.beginPath();CX.arc(0,4,2,0,Math.PI*2);CX.fill();}
+  // follow indicator
+  if(G.emmaRescued&&!G.emmaEscorted){CX.fillStyle='rgba(100,200,100,0.6)';CX.font='bold 10px sans-serif';CX.textAlign='center';CX.fillText('[跟随中]',0,-24);}
+  CX.restore();
+  // HP bar
+  var barW=44,barH=5;
+  var hpPct=Math.max(0,em.hp/em.maxHp);
+  CX.fillStyle='rgba(0,0,0,0.6)';CX.fillRect(em.x-barW/2,em.y-26,barW,barH);
+  CX.fillStyle=hpPct>0.5?'#44dd44':hpPct>0.25?'#ddaa33':'#dd3333';
+  CX.fillRect(em.x-barW/2,em.y-26,barW*hpPct,barH);
+  CX.strokeStyle='rgba(255,255,255,0.3)';CX.strokeRect(em.x-barW/2,em.y-26,barW,barH);
+  // update HUD
+  document.getElementById('emmaHp').textContent=Math.ceil(em.hp)+'/'+em.maxHp;
+}
+
+// ==================== DRAW ENEMIES ====================
+function drawEnemies(t){
+  for(var i=G.enemies.length-1;i>=0;i--){
+    var e=G.enemies[i];
+    CX.save();CX.translate(e.x,e.y);
+    // direction to player
+    var ang=Math.atan2(G.py-e.y,G.px-e.x);
+    CX.rotate(ang+Math.PI/2);
+    var et=ETYPES[e.type];
+    var bounce=Math.abs(Math.sin(t*6+(e.phase||0)))*2;
+    var sz=et.sz+bounce;
+    // shadow
+    CX.fillStyle='rgba(0,0,0,0.4)';CX.beginPath();CX.ellipse(3,sz*0.6,sz*0.6,sz*0.25,0,0,Math.PI*2);CX.fill();
+    // ghost alpha
+    if(et.ghost) CX.globalAlpha=0.55+0.25*Math.sin(t*3);
+    // body
+    CX.fillStyle=et.color;
+    CX.beginPath();CX.arc(0,0,sz,0,Math.PI*2);CX.fill();
+    // darker overlay
+    var darker=CX.createRadialGradient(0,-sz*0.3,0,0,0,sz);
+    darker.addColorStop(0,et.color);darker.addColorStop(1,'rgba(0,0,0,0.5)');
+    CX.fillStyle=darker;CX.beginPath();CX.arc(0,0,sz,0,Math.PI*2);CX.fill();
+    // eyes
+    CX.globalAlpha=1;CX.fillStyle='#ff2222';CX.shadowColor='#ff0000';CX.shadowBlur=6;
+    CX.beginPath();CX.arc(-sz*0.28,-sz*0.15,sz*0.13,0,Math.PI*2);CX.fill();
+    CX.beginPath();CX.arc(sz*0.28,-sz*0.15,sz*0.13,0,Math.PI*2);CX.fill();
+    CX.shadowBlur=0;
+    // mouth
+    if(et.boss){
+      CX.fillStyle='#110';
+      CX.beginPath();CX.arc(0,sz*0.2,sz*0.25,0,Math.PI);CX.fill();
+      CX.fillStyle='#f00';
+      CX.beginPath();CX.moveTo(-sz*0.15,sz*0.1);CX.lineTo(sz*0.15,sz*0.1);CX.lineTo(0,sz*0.35);CX.closePath();CX.fill();
+    } else {
+      CX.fillStyle='#300';
+      CX.fillRect(-sz*0.2,sz*0.15,sz*0.4,sz*0.12);
+    }
+    // boss crown
+    if(et.boss){CX.fillStyle='#ffcc00';CX.beginPath();CX.moveTo(-sz*0.5,-sz-sz*0.2);CX.lineTo(sz*0.5,-sz-sz*0.2);CX.lineTo(0,-sz-sz*0.5);CX.closePath();CX.fill();}
+    CX.restore();
+    // HP bar (only if damaged)
+    if(e.hp<e.maxHp){var bw=sz*1.8,bh=4;var pct=e.hp/e.maxHp;
+      CX.fillStyle='rgba(0,0,0,0.6)';CX.fillRect(e.x-bw/2,e.y-sz-bh-6,bw,bh);
+      CX.fillStyle=et.boss?'#ff4444':'#dd3333';CX.fillRect(e.x-bw/2,e.y-sz-bh-6,bw*pct,bh);}
+  }
+}
+
+// ==================== BULLETS & PARTICLES ====================
+function drawBullets(){
+  for(var i=G.bullets.length-1;i>=0;i--){
+    var b=G.bullets[i];
+    CX.save();CX.translate(b.x,b.y);CX.rotate(b.angle);
+    if(b.flame){
+      CX.globalAlpha=b.life/40;CX.fillStyle='#ff6600';CX.shadowColor='#ff3300';CX.shadowBlur=12;
+      CX.beginPath();CX.ellipse(0,0,10+Math.random()*6,5+Math.random()*4,0,0,Math.PI*2);CX.fill();
+      CX.fillStyle='#ffcc00';CX.beginPath();CX.ellipse(0,0,4,2,0,0,Math.PI*2);CX.fill();
+      CX.shadowBlur=0;CX.globalAlpha=1;
+    } else {
+      var ws=getWeaponStats(b.weaponIdx!==undefined?b.weaponIdx:G.weapon);
+      CX.fillStyle=ws.color;CX.shadowColor=ws.color;CX.shadowBlur=6;
+      CX.fillRect(-b.vx*1.5,-(b.spread||1.5),Math.sqrt(b.vx*b.vx+b.vy*b.vy)*1.5,(b.spread||1.5)*2);
+      CX.shadowBlur=0;
+    }
+    CX.restore();
+  }
+}
+
+function drawParticles(){
+  for(var i=G.particles.length-1;i>=0;i--){
+    var p=G.particles[i];CX.globalAlpha=p.life;
+    if(p.type==='blood'){
+      CX.fillStyle=p.c||'#aa0000';CX.beginPath();CX.arc(p.x,p.y,p.sz*(2-p.life),0,Math.PI*2);CX.fill();
+    } else if(p.type==='spark'){
+      CX.fillStyle='#ffcc44';CX.shadowColor='#ff8800';CX.shadowBlur=8;CX.beginPath();CX.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);CX.fill();CX.shadowBlur=0;
+    } else if(p.type==='shell'){
+      CX.save();CX.translate(p.x,p.y);CX.rotate(p.rot);CX.fillStyle='#cca844';CX.fillRect(-4,-1.5,8,3);CX.restore();
+    } else if(p.type==='flame'){
+      CX.globalAlpha=p.life*0.8;CX.fillStyle='#ff4400';CX.beginPath();CX.arc(p.x,p.y,p.sz*(3-p.life),0,Math.PI*2);CX.fill();
+      CX.fillStyle='#ffaa00';CX.beginPath();CX.arc(p.x,p.y,p.sz*0.5*(2-p.life),0,Math.PI*2);CX.fill();
+    } else {
+      CX.fillStyle=p.c||'#fff';CX.beginPath();CX.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);CX.fill();
+    }
+    CX.globalAlpha=1;
+  }
+}
+
+function drawFloatTexts(){
+  for(var i=G.floatTexts.length-1;i>=0;i--){var ft=G.floatTexts[i];
+    CX.globalAlpha=ft.life;CX.font=ft.size+'px sans-serif';CX.textAlign='center';CX.fillStyle=ft.color;CX.shadowColor='#000';CX.shadowBlur=3;CX.fillText(ft.t,ft.x,ft.y);CX.shadowBlur=0;
+    CX.globalAlpha=1;
+  }
+}
+
+// ==================== UI / HUD ====================
+function drawUI(t){
+  // HP bar
+  CX.fillStyle='rgba(0,0,0,0.7)';CX.fillRect(16,16,220,24);
+  var hpPct=G.hp/G.maxHp;
+  var hpCol=(hpPct>0.5)?'#44bb44':((hpPct>0.25)?'#bbbb33':'#bb3333');
+  CX.fillStyle=hpCol;CX.fillRect(18,18,216*hpPct,20);
+  CX.strokeStyle='rgba(255,255,255,0.3)';CX.lineWidth=1;CX.strokeRect(16,16,220,24);
+  CX.fillStyle='#fff';CX.font='bold 12px sans-serif';CX.textAlign='left';CX.fillText('HP '+Math.ceil(G.hp)+'/'+G.maxHp,24,33);
+  // shield bar
+  if(G.shieldHp>0){
+    var shMax=(G.skills.shield||0)*30;
+    CX.fillStyle='rgba(0,0,0,0.7)';CX.fillRect(16,44,180,12);
+    CX.fillStyle='#4488ff';CX.fillRect(18,46,176*Math.min(1,G.shieldHp/shMax),8);
+    CX.fillStyle='#88bbff';CX.font='10px sans-serif';CX.fillText('SHIELD '+Math.ceil(G.shieldHp),20,54);
+  }
+  // wave info
+  CX.fillStyle='#ccc';CX.font='bold 16px sans-serif';CX.textAlign='left';
+  var chName=G.chapter===1?'墓地':G.chapter===2?'豪宅':'撤离';
+  CX.fillText(chName+' 第'+G.wave+'/'+STORY_CHAPTERS[G.chapter-1].waves+'波',16,78);
+  // score & gold
+  CX.font='14px sans-serif';CX.fillStyle='#ffcc44';
+  CX.fillText('金币: '+G.gold,16,100);
+  CX.fillStyle='#44dd44';CX.fillText('击杀: '+G.totalKills,100,100);
+  // skill points indicator
+  if(G.skillPoints>0){CX.fillStyle='#44ff88';CX.font='bold 14px sans-serif';CX.textAlign='right';CX.fillText('技能点: '+G.skillPoints+' [T]',W-20,30);}
+  // weapon info
+  var ws=getWeaponStats(G.weapon);
+  CX.textAlign='right';CX.fillStyle=ws.color;CX.font='bold 14px sans-serif';
+  CX.fillText(WEAPONS[G.weapon].name,W-20,52);
+  CX.fillStyle='#bbb';CX.font='12px sans-serif';
+  var ammoText=G.reloading?'换弹中...':G.ammo+'/'+ws.ammo;
+  CX.fillText(ammoText,W-20,70);
+  // combo
+  if(G.combo>1){CX.fillStyle='#ffaa00';CX.font='bold 18px sans-serif';CX.textAlign='center';CX.shadowColor='#000';CX.shadowBlur=4;CX.fillText(G.combo+' COMBO!',W/2,40);CX.shadowBlur=0;}
+  // kill streak
+  if(G.killStreak>1){CX.fillStyle='#ff4444';CX.font='bold 16px sans-serif';CX.textAlign='center';CX.fillText(G.killStreak+' 连杀!',W/2,64);}
+  // objective
+  if(G.objective){CX.fillStyle='rgba(0,0,0,0.6)';CX.fillRect(W/2-180,H-42,360,28);CX.fillStyle='#ccaa44';CX.font='13px sans-serif';CX.textAlign='center';CX.fillText('目标: '+G.objective,W/2,H-22);}
+  // controls hint (bottom left)
+  CX.fillStyle='rgba(255,255,255,0.25)';CX.font='11px sans-serif';CX.textAlign='left';
+  CX.fillText('WASD移动 | 鼠标射击 | R换弹 | U升级 | T技能 | 1-4切换武器',16,H-14);
+  // wave banner
+  if(G.waveBannerTimer>0){CX.globalAlpha=Math.min(1,G.waveBannerTimer/60);
+    CX.fillStyle='rgba(0,0,0,0.7)';CX.font='bold '+((G.waveBannerBoss)?'36':'28')+'px sans-serif';CX.textAlign='center';
+    var bannerText=G.waveBannerBoss?'BOSS - 死亡使者!':'第 '+G.wave+' 波';
+    CX.strokeStyle=G.waveBannerBoss?'#ff3333':'#ffaa33';CX.lineWidth=3;
+    CX.strokeText(bannerText,W/2,H/2);CX.fillStyle=G.waveBannerBoss?'#ff5555':'#ffcc44';
+    CX.fillText(bannerText,W/2,H/2);CX.globalAlpha=1;}
+  // chapter title
+  if(G.chapterTitleTimer>0){CX.globalAlpha=Math.min(1,G.chapterTitleTimer/120);
+    CX.fillStyle='rgba(0,0,0,0.7)';CX.font='bold 32px sans-serif';CX.textAlign='center';
+    CX.strokeStyle='#cc4444';CX.lineWidth=3;CX.strokeText(G.chapterTitle,W/2,H/2-60);CX.fillStyle='#ff6666';CX.fillText(G.chapterTitle,W/2,H/2-60);CX.globalAlpha=1;}
+}
+
+// ==================== TITLE SCREEN ====================
+function drawTitleScreen(t){
+  drawBG(t);drawGraves(t);
+  // overlay
+  CX.fillStyle='rgba(0,0,0,0.6)';CX.fillRect(0,0,W,H);
+  // title
+  CX.textAlign='center';CX.font='bold 56px sans-serif';CX.fillStyle='#ff4444';CX.shadowColor='#880000';CX.shadowBlur=20;
+  CX.fillText('黑暗侵袭',W/2,180);
+  CX.font='bold 28px sans-serif';CX.fillStyle='#cc88aa';CX.shadowColor='#441133';CX.shadowBlur=10;
+  CX.fillText('救援行动',W/2,230);CX.shadowBlur=0;
+  // subtitle
+  CX.font='16px sans-serif';CX.fillStyle='#888';CX.fillText('生存 / 武器升级 / 技能树 / 剧情模式',W/2,280);
+  // start prompt (pulsing)
+  var pa=0.5+0.5*Math.sin(t*2);
+  CX.globalAlpha=pa;CX.font='bold 22px sans-serif';CX.fillStyle='#ffcc44';
+  CX.fillText('点击鼠标开始游戏',W/2,420);CX.globalAlpha=1;
+  // features
+  CX.font='13px sans-serif';CX.fillStyle='#777';
+  CX.fillText('4种武器 · 每种5项属性可升级 · 7个技能 · 3章剧情',W/2,480);
+  CX.fillText('保护艾玛 · 击败死亡使者 · 逃离黑暗',W/2,505);
+  // crosshair at center
+  CX.strokeStyle='rgba(255,100,100,0.6)';CX.lineWidth=1.5;
+  CX.beginPath();CX.arc(G.mx,G.my,16,0,Math.PI*2);CX.stroke();
+  CX.beginPath();CX.moveTo(G.mx-8,G.my);CX.lineTo(G.mx+8,G.my);CX.moveTo(G.mx,G.my-8);CX.lineTo(G.mx,G.my+8);CX.stroke();
+}
+
+// ==================== GAME OVER / VICTORY ====================
+function drawGameOverScreen(t){
+  drawBG(t);drawGraves(t);
+  CX.fillStyle='rgba(0,0,0,0.7)';CX.fillRect(0,0,W,H);
+  CX.textAlign='center';
+  if(G.state==='gameover'){
+    CX.font='bold 52px sans-serif';CX.fillStyle='#cc2222';CX.shadowColor='#550000';CX.shadowBlur=20;
+    CX.fillText('YOU DIED',W/2,H/2-40);
+    CX.font='18px sans-serif';CX.fillStyle='#888';CX.shadowBlur=0;
+    CX.fillText('击杀数: '+G.totalKills+'  |  金币: '+G.gold+'  |  波次: '+(G.chapter)+'-'+G.wave,W/2,H/2+20);
+    CX.font='16px sans-serif';CX.fillStyle='#aa6666';
+    CX.fillText('点击重新开始',W/2,H/2+70);
+  } else if(G.state==='victory'){
+    CX.font='bold 48px sans-serif';CX.fillStyle='#44cc44';CX.shadowColor='#005500';CX.shadowBlur=20;
+    CX.fillText('VICTORY',W/2,H/2-40);
+    CX.font='18px sans-serif';CX.fillStyle='#888';CX.shadowBlur=0;
+    CX.fillText('总击杀: '+G.totalKills+'  |  金币: '+G.gold,W/2,H/2+20);
+    CX.fillStyle='#66aa66';CX.font='16px sans-serif';
+    CX.fillText('点击重新开始',W/2,H/2+70);
+  }
+}
+
+// ==================== SHOOTING ====================
+function tryShoot(){
+  if(G.state!=='playing'||G.reloading||G.storyShowing) return;
+  var now=Date.now();
+  var ws=getWeaponStats(G.weapon);
+  if(now-G.lastShotTime<ws.fireDelay) return;
+  if(G.ammo<=0){reloadWeapon();return;}
+  G.lastShotTime=now;
+  G.ammo--;
+  G.flashTimer=120;
+  // screen shake
+  G.shakeT=4;G.shakeX=(Math.random()-0.5)*4;G.shakeY=(Math.random()-0.5)*4;
+  var baseAng=G.pangle;
+  for(var s=0;s<ws.shots;s++){
+    var spr=ws.spread*(Math.random()-0.5)*2;
+    var ang=baseAng+spr;
+    var spd=12+Math.random()*3;
+    var b={x:G.px+Math.cos(ang)*24,y:G.py+Math.sin(ang)*24,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,angle:ang,life:ws.flame?40:50,weaponIdx:G.weapon,flame:ws.flame,spread:ws.flame?6:2,dmg:ws.dmg,knockback:ws.knockback};
+    G.bullets.push(b);
+  }
+  // shell particle
+  G.particles.push({type:'shell',x:G.px,y:G.py,vx:-Math.cos(baseAng)*(2+Math.random()*3),vy:-Math.sin(baseAng)*(2+Math.random()*3),sz:3,life:1,decay:0.02,rot:Math.random()*Math.PI*2,rv:(Math.random()-0.5)*0.3});
+}
+
+function reloadWeapon(){
+  if(G.reloading||G.state!=='playing') return;
+  var ws=getWeaponStats(G.weapon);
+  if(G.ammo>=ws.ammo) return;
+  G.reloading=true;G.reloadTimer=ws.reload;
+}
+
+function switchWeapon(idx){
+  if(idx<0||idx>3)return;
+  if(G.weaponLevel[idx]<=0&&idx!==0) return;
+  G.weapon=idx;
+  G.reloading=false;
+  var ws=getWeaponStats(idx);
+  G.ammo=ws.ammo;
+}
+
+// ==================== SPAWN ENEMIES ====================
+function spawnEnemy(type,x,y){
+  var et=ETYPES[type];
+  var e={x:x||((Math.random()<0.5)?-30:W+30),y:y||(H*0.5+Math.random()*(H*0.4)),type:type,hp:et.hp,maxHp:et.hp,spd:et.spd,dmg:et.dmg,state:'walk',attackCd:0,stunT:0,phase:Math.random()*Math.PI*2,lastHit:0};
+  G.enemies.push(e);
+}
+
+function spawnWave(waveNum){
+  G.waveActive=true;G.killsThisWave=0;G.spawnLeft=0;
+  G.waveBannerTimer=90;G.waveBannerBoss=false;
+  var isLastWave=waveNum>=STORY_CHAPTERS[G.chapter-1].waves;
+  var ch=G.chapter;
+  if(isLastWave && ch<3){
+    // final wave of non-last chapter = mini boss or harder mix
+    G.spawnLeft=6+ch*3;
+    for(var i=0;i<G.spawnLeft;i++){
+      (function(ii){
+        setTimeout(function(){
+          if(G.state!=='playing')return;
+          var t=ii===G.spawnLeft-1?(ch===1?2:4):Math.floor(Math.random()*(2+ch));
+          spawnEnemy(t);
+        },ii*800);
+      })(i);
+    }
+  } else if(ch===3 && waveNum>=9){
+    // BOSS WAVE
+    G.waveBannerBoss=true;G.bossSpawned=true;G.spawnLeft=1;
+    spawnEnemy(6,W/2,-60);
+  } else {
+    // normal wave
+    var count=4+waveNum*2+ch*2;
+    G.spawnLeft=count;
+    for(var i=0;i<count;i++){
+      (function(ii){
+        setTimeout(function(){
+          if(G.state!=='playing')return;
+          // pick type based on wave/chapter
+          var r=Math.random();
+          var t;
+          if(ch===1){
+            t=r<0.5?0:r<0.8?1:r<0.95?2:3;
+          } else if(ch===2){
+            t=r<0.3?0:r<0.5?1:r<0.7?3:r<0.85?4:5;
+          } else {
+            t=r<0.2?0:r<0.35?1:r<0.5?2:r<0.65?3:r<0.8?4:r<0.92?5:2;
+          }
+          spawnEnemy(t);
+        },ii*(600+Math.random()*400));
+      })(i);
+    }
+  }
+}
+
+// ==================== UPDATE LOGIC ====================
+function updateGame(dt){
+  if(G.state!=='playing'||G.storyShowing) return;
+  var spdBase=3.2*(1+G.skills.speedBoost*0.10);
+  var vx=0,vy=0;
+  if(G.keys['w']||G.keys['arrowup']) vy-=1;
+  if(G.keys['s']||G.keys['arrowdown']) vy+=1;
+  if(G.keys['a']||G.keys['arrowleft']) vx-=1;
+  if(G.keys['d']||G.keys['arrowright']) vx+=1;
+  if(vx!==0||vy!==0){var vl=Math.sqrt(vx*vx+vy*vy);vx/=vl;vy/=vl;}
+  G.px+=vx*spdBase;G.py+=vy*spdBase;
+  G.px=Math.max(20,Math.min(W-20,G.px));
+  G.py=Math.max(20,Math.min(H-20,G.py));
+  // aim angle
+  G.pangle=Math.atan2(G.my-G.py,G.mx-G.px);
+  // reload timer
+  if(G.reloading){G.reloadTimer-=dt;if(G.reloadTimer<=0){
+    G.reloading=false;var ws=getWeaponStats(G.weapon);G.ammo=ws.ammo;}}
+  // timers
+  if(G.flashTimer>0) G.flashTimer-=dt;
+  if(G.damageFlash>0) G.damageFlash-=dt*0.03;
+  if(G.comboTimer>0){G.comboTimer-=dt;if(G.comboTimer<=0) G.combo=0;}
+  if(G.killStreakTimer>0){G.killStreakTimer-=dt;if(G.killStreakTimer<=0){G.killStreak=0;}}
+  if(G.waveBannerTimer>0) G.waveBannerTimer--;
+  if(G.chapterTitleTimer>0) G.chapterTitleTimer--;
+  // shield regen (slow)
+  if(G.skills.shield>0){var shMax=G.skills.shield*30;if(G.shieldHp<shMax) G.shieldHp+=dt*0.002;}
+  // heal aura
+  if(G.skills.healAura>0){G.healTimer+=dt;if(G.healTimer>=1000){G.healTimer-=1000;G.hp=Math.min(G.maxHp,G.hp+G.skills.healAura);}}
+  // update bullets
+  for(var i=G.bullets.length-1;i>=0;i--){var b=G.bullets[i];
+    b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.flame){b.vx*=0.96;b.vy*=0.96;} // flames slow down
+    if(b.life<=0||b.x<-50||b.x>W+50||b.y<-50||b.y>H+50){G.bullets.splice(i,1);continue;}
+    // collision with enemies
+    var removed=false;
+    for(var j=G.enemies.length-1;j>=0;j--){var e=G.enemies[j];
+      var dx=b.x-e.x,dy=b.y-e.y,dist=Math.sqrt(dx*dx+dy*dy),rad=ETYPES[e.type].sz;
+      if(dist<rad+4){
+        // hit!
+        var critChance=G.skills.crit*0.08;
+        var isCrit=Math.random()<critChance;
+        var dmg=isCrit?b.dmg*2:b.dmg;
+        e.hp-=dmg;
+        e.stunT=3;
+        // knockback
+        if(b.knockback){e.x+=Math.cos(b.angle)*b.knockback;e.y+=Math.sin(b.angle)*b.knockback;}
+        // particles - use ETYPES (not ETypes)
+        for(var p=0;p<(isCrit?8:4);p++){G.particles.push({type:'blood',x:b.x,y:b.y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,sz:3+Math.random()*4,life:1,decay:0.03,c:ETYPES[e.type].color});}
+        if(isCrit){for(var p2=0;p2<6;p2++){G.particles.push({type:'spark',x:e.x,y:e.y,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,sz:2+Math.random()*3,life:1,decay:0.025});}}
+        G.floatTexts.push({t:(isCrit?'暴击!':'-'+Math.ceil(dmg)),x:e.x,y:e.y-rad-10,color:isCrit?'#ffff00':'#ffffff',size:isCrit?18:14,life:1,decay:0.015,vy:-1});
+        if(!b.flame){b.life=0;removed=true;break;} // non-flame bullets disappear on hit; flame continues
+      }
+    }
+    // remove dead bullets that were flagged
+    if(removed){var bi=G.bullets.indexOf(b);if(bi>=0)G.bullets.splice(bi,1);}
+  }
+  // update particles
+  for(var i=G.particles.length-1;i>=0;i--){var p=G.particles[i];
+    if(p.vx!==undefined){p.x+=p.vx;p.y+=p.vy;if(p.type!=='flame'){p.vy+=0.1;}} // gravity
+    if(p.rot!==undefined)p.rot+=(p.rv||0);
+    p.life-=p.decay||0.02;
+    if(p.life<=0)G.particles.splice(i,1);
+  }
+  // update float texts
+  for(var i=G.floatTexts.length-1;i>=0;i--){var ft=G.floatTexts[i];ft.y+=(ft.vy||-1.5);ft.life-=ft.decay||0.015;if(ft.life<=0)G.floatTexts.splice(i,1);}
+  // update enemies
+  for(var i=G.enemies.length-1;i>=0;i--){var e=G.enemies[i];var et=ETYPES[e.type];
+    if(e.stunT>0){e.stunT--;continue;}
+    // move toward player (or Emma if rescued and chapter 2+)
+    var targetX=G.px,targetY=G.py;
+    if(G.emmaRescued&&G.chapter>=2&&Math.random()<0.25){targetX=G.emma.x;targetY=G.emma.y;}
+    var ex=targetX-e.x,ey=targetY-e.y,ed=Math.sqrt(ex*ex+ey*ey);
+    if(ed>1){
+      var ms=et.spd*(0.85+Math.random()*0.3);
+      if(et.ghost) ms*=1.3;
+      e.x+=(ex/ed)*ms;e.y+=(ey/ed)*ms;
+    }
+    // attack player
+    var pdist=Math.sqrt((G.px-e.x)*(G.px-e.x)+(G.py-e.y)*(G.py-e.y));
+    if(pdist<et.sz+18){
+      e.attackCd--;
+      if(e.attackCd<=0){
+        e.attackCd=60; // 1 second cooldown
+        takeDamage(e.dmg);
+      }
+    }
+    // attack Emma
+    if(G.emma){
+      var edist=Math.sqrt((G.emma.x-e.x)*(G.emma.x-e.x)+(G.emma.y-e.y)*(G.emma.y-e.y));
+      if(edist<et.sz+14){
+        e.attackCd--;
+        if(e.attackCd<=0){
+          e.attackCd=60;
+          damageEmma(e.dmg*0.7);
+        }
+      }
+    }
+    // death check
+    if(e.hp<=0){
+      G.killsThisWave++;G.totalKills++;G.killStreak++;G.killStreakTimer=3000/dt;
+      G.combo++;G.comboTimer=2000/dt;
+      // gold with xpBoost bonus
+      var goldVal=et.reward;
+      if(G.skills.xpBoost>0) goldVal=Math.floor(goldVal*(1+G.skills.xpBoost*0.15));
+      G.gold+=goldVal;
+      // skill point every 15 kills
+      if(G.totalKills%15===0) G.skillPoints++;
+      G.floatTexts.push({t:'+'+goldVal,color:'#ffcc44',size:16,x:e.x,y:e.y-et.sz,life:1,decay:0.012,vy:-2});
+      // blood pool
+      if(!et.ghost){G.bloodPools.push({x:e.x,y:e.y,r:15+Math.random()*20,alpha:1});}
+      // death particles
+      for(var p=0;p<10;p++){G.particles.push({type:'blood',x:e.x,y:e.y,vx:(Math.random()-0.1)*5,vy:(Math.random()-0.1)*5,sz:3+Math.random()*5,life:1,decay:0.02,c:et.color});}
+      G.enemies.splice(i,1);
+    }
+  }
+  // blood pools fade
+  for(var i=G.bloodPools.length-1;i>=0;i--){G.bloodPools[i].alpha-=0.001;if(G.bloodPools[i].alpha<=0)G.bloodPools.splice(i,1);}
+  // screen shake decay
+  if(G.shakeT>0){G.shakeT--;G.shakeX=(Math.random()-0.5)*G.shakeT;G.shakeY=(Math.random()-0.5)*G.shakeT;}
+  // Emma AI
+  if(G.emma) updateEmma(dt);
+  // wave management
+  if(G.waveActive&&G.enemies.length===0&&G.spawnLeft<=0){
+    G.waveClearTimer+=dt;
+    if(G.waveClearTimer>120){ // 2 sec before next wave
+      G.waveClearTimer=0;G.waveActive=false;G.wave++;
+      G.wavesCleared++;
+      G.gold+=50*G.wave; // wave clear bonus
+      if(G.wave>STORY_CHAPTERS[G.chapter-1].waves){
+        // chapter complete!
+        G.state='storyPause';
+        if(STORY_CHAPTERS[G.chapter-1].onComplete) STORY_CHAPTERS[G.chapter-1].onComplete();
+      } else {
+        setTimeout(function(){if(G.state==='playing') spawnWave(G.wave);},1500);
+      }
+    }
+  }
+}
+
+function takeDamage(amount){
+  // shield first
+  if(G.shieldHp>0){
+    var absorbed=Math.min(G.shieldHp,amount);
+    G.shieldHp-=absorbed;
+    amount-=absorbed;
+    G.particles.push({type:'spark',x:G.px,y:G.py,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5,sz:3,life:1,decay:0.03,c:'#4488ff'});
+  }
+  if(amount<=0) return;
+  G.hp-=amount;
+  G.damageFlash=1;
+  G.shakeT=8;G.shakeX=(Math.random()-0.5)*10;G.shakeY=(Math.random()-0.5)*10;
+  G.combo=0;
+  if(G.hp<=0){
+    // second wind?
+    if(G.skills.secondWind>0&&!G.secondWindUsed){
+      G.secondWindUsed=true;G.hp=G.maxHp*0.5;G.shieldHp=0;
+      G.floatTexts.push({t:'不屈意志!',x:G.px,y:G.py-30,color:'#44aaff',size:24,life:1,decay:0.01,vy:-2});
+      showStory([{speaker:'🛡️ 不屈意志',text:'你拒绝了死亡...站起来继续战斗！'}],function(){});
+      return;
+    }
+    G.state='gameover';
+  }
+}
+
+function damageEmma(amount){
+  if(!G.emma) return;
+  G.emma.hp-=amount;
+  G.floatTexts.push({t:'艾玛 -'+Math.ceil(amount),x:G.emma.x,y:G.emma.y-20,color:'#ff6666',size:14,life:1,decay:0.015,vy:-1});
+  if(G.emma.hp<=0){
+    // Emma death = game over
+    G.state='gameover';
+    showStory([{speaker:'💀',text:'艾玛倒下了...你没能保护好她...'}],function(){});
+  }
+}
+
+// ==================== EMMA AI ====================
+function initEmma(){
+  G.emma={x:W/2+200,y:H/2,hp:80,maxHp:80,state:'follow'};
+  G.emmaRescued=false;G.emmaEscorted=false;
+  document.getElementById('emmaHud').style.display='block';
+}
+
+function updateEmma(dt){
+  if(!G.emma) return;
+  var em=G.emma;
+  // chapter 2: Emma follows player once found
+  if(G.chapter===2 && !G.emmaRescued){
+    // Emma stays in place until player gets close
+    var dist=Math.sqrt((G.px-em.x)*(G.px-em.x)+(G.py-em.y)*(G.py-em.y));
+    if(dist<60 && !G.emmaRescued){
+      G.emmaRescued=true;
+      showStory([{speaker:'😊 艾玛',text:'是你！太好了...谢谢你来找我要...'}, {speaker:'🔫 你',text:'跟我走，我带你出去。'}], function(){});
+    }
+    // slight idle animation
+    em.x+=Math.sin(Date.now()*0.001)*0.2;
+    return;
+  }
+  if(G.emmaRescued || G.chapter>=3){
+    // follow player at a distance
+    var dx=G.px-em.x,dy=G.py-em.y,dist=Math.sqrt(dx*dx+dy*dy);
+    var idealDist=70;
+    if(dist>idealDist+20){
+      var spd=2.0*(1+G.skills.speedBoost*0.05);
+      em.x+=(dx/dist)*spd;em.y+=(dy/dist)*spd;
+    } else if(dist<idealDist-20 && dist>5){
+      var spd=1.5;
+      em.x-=(dx/dist)*spd;em.y-=(dy/dist)*spd;
+    }
+    // keep in bounds
+    em.x=Math.max(20, Math.min(W-20,em.x));
+    em.y=Math.max(20, Math.min(H-20,em.y));
+  }
+}
+
+// ==================== CHAPTER MANAGEMENT ====================
+function startChapter(ch){
+  G.chapter=ch;
+  G.wave=0;G.waveActive=false;G.waveClearTimer=0;G.bossSpawned=false;
+  G.enemies=[];G.bullets=[];G.particles=[];
+  G.px=W/2;G.py=H*0.7;
+  var sc=STORY_CHAPTERS[ch-1];
+  G.objective=sc.objective;
+  G.chapterTitle=sc.title;
+  G.chapterTitleTimer=150;
+  // init Emma for chapter 2+
+  if(ch>=2 && !G.emma) initEmma();
+  if(ch===2){
+    // place Emma in the map
+    if(G.emma){G.emma.x=W*0.72;G.emma.y=H*0.55;G.emma.hp=G.emma.maxHp;G.emmaRescued=false;}
+  }
+  // show intro story
+  showStory(sc.intro,function(){
+    G.state='playing';
+    G.wave=1;
+    spawnWave(1);
+  });
+}
+
+// ==================== STORY SYSTEM ====================
+function showStory(dialogues,onComplete){
+  G.storyQueue=dialogues.slice();
+  G.storyIdx=0;
+  G.storyCb=onComplete;
+  G.storyShowing=true;
+  advanceStory();
+}
+
+function advanceStory(){
+  if(G.storyIdx>=G.storyQueue.length){
+    // all done
+    G.storyShowing=false;
+    document.getElementById('storyBox').style.display='none';
+    if(G.storyCb){var cb=G.storyCb;G.storyCb=null;cb();} return;
+  }
+  var d=G.storyQueue[G.storyIdx];
+  document.getElementById('storySpeaker').textContent=d.speaker;
+  document.getElementById('storyDialogue').textContent=d.text;
+  document.getElementById('storyBox').style.display='block';
+  G.storyIdx++;
+}
+
+document.getElementById('storyBox').addEventListener('click',function(){advanceStory();});
+
+// ==================== UPGRADE PANEL ====================
+function openUpgrade(){
+  if(G.state!=='playing') return;
+  G.showUpgrade=true;
+  document.getElementById('upgradePanel').style.display='block';
+  refreshUpgradePanel();
+  G.state='paused';
+}
+
+function closeUpgrade(){
+  G.showUpgrade=false;
+  document.getElementById('upgradePanel').style.display='none';
+  G.state='playing';
+}
+
+function refreshUpgradePanel(){
+  var c=document.getElementById('upgradeContent');c.innerHTML='';
+  document.getElementById('goldDisp').textContent='金币: '+G.gold;
+  for(var wi=0;wi<WEAPONS.length;wi++){
+    var w=WEAPONS[wi];
+    var locked=G.weaponLevel[wi]<=0&&wi!==0;
+    var div=document.createElement('div');div.className='upg-weapon';
+    var h=document.createElement('h3');h.textContent=w.name+(locked?' 🔒':'');div.appendChild(h);
+    var stats=['dmg','rate','reload','ammo','spread'];
+    for(var si=0;si<stats.length;si++){
+      var sn=stats[si];
+      var lv=G.weaponUpgrades[wi][sn]||0;
+      var cost=getUpgradeCost(wi,sn);
+      var canAfford=G.gold>=cost&&lv<5;
+      var row=document.createElement('div');row.className='upg-stat';
+      var nm=document.createElement('span');nm.className='stat-name';nm.textContent=STAT_NAMES[sn];row.appendChild(nm);
+      var bar=document.createElement('div');bar.className='stat-bar';
+      var fill=document.createElement('div');fill.className='stat-fill';fill.style.width=(lv*20)+'%';bar.appendChild(fill);row.appendChild(bar);
+      var lvTxt=document.createElement('span');lvTxt.className='stat-lv';lvTxt.textContent=lv+'/5';row.appendChild(lvTxt);
+      var btn=document.createElement('button');btn.className='upg-btn';btn.textContent='↑'+cost;
+      if(!canAfford||locked){btn.disabled=true;}
+      (function(widx,sname,btnEl){btnEl.onclick=function(){doUpgrade(widx,sname,btnEl);};})(wi,sn,btn);
+      row.appendChild(btn);div.appendChild(row);
+    }
+    c.appendChild(div);
+  }
+}
+
+function doUpgrade(wi,sn,btn){
+  var cost=getUpgradeCost(wi,sn);
+  if(G.gold<cost) return;
+  var lv=G.weaponUpgrades[wi][sn];
+  if(lv>=5) return;
+  G.gold-=cost;
+  G.weaponUpgrades[wi][sn]++;
+  // unlock weapon if first upgrade
+  if(wi>0&&G.weaponLevel[wi]<=0){G.weaponLevel[wi]=1;}
+  refreshUpgradePanel();
+}
+
+// ==================== SKILL TREE ====================
+function openSkillTree(){
+  if(G.state!=='playing'&&G.state!=='paused') return;
+  var wasPaused=G.state==='paused';
+  document.getElementById('skillPanel').style.display='block';
+  refreshSkillTree();
+  if(!wasPaused) G.state='paused';
+}
+
+function closeSkillTree(){
+  document.getElementById('skillPanel').style.display='none';
+  if(G.state==='paused') G.state='playing';
+}
+
+function refreshSkillTree(){
+  var c=document.getElementById('skillTree');c.innerHTML='';
+  document.getElementById('spDisp').textContent='技能点: '+G.skillPoints;
+  for(var i=0;i<SKILL_DEFS.length;i++){
+    var sk=SKILL_DEFS[i];
+    var lv=G.skills[sk.id]||0;
+    var maxed=lv>=sk.maxLv;
+    var canLearn=!maxed&&G.skillPoints>=sk.cost;
+    var card=document.createElement('div');card.className='skill-card'+(maxed?' learned':'');
+    var ic=document.createElement('div');ic.className='skill-icon';ic.textContent=sk.icon;card.appendChild(ic);
+    var nm=document.createElement('div');nm.className='skill-name';nm.textContent=sk.name+(maxed?' Lv.MAX':' Lv.'+lv);card.appendChild(nm);
+    var dc=document.createElement('div');dc.className='skill-desc';dc.textContent=sk.desc;card.appendChild(dc);
+    var cst=document.createElement('div');cst.className='skill-cost';
+    cst.textContent=maxed?'已满级':('消耗 '+sk.cost+' 技能点');card.appendChild(cst);
+    (function(sidx,cardEl){cardEl.onclick=function(){doLearnSkill(sidx);};})(i,card);
+    c.appendChild(card);
+  }
+}
+
+function doLearnSkill(si){
+  var sk=SKILL_DEFS[si];
+  var lv=G.skills[sk.id]||0;
+  if(lv>=sk.maxLv) return;
+  if(G.skillPoints<sk.cost) return;
+  G.skillPoints-=sk.cost;
+  G.skills[sk.id]=lv+1;
+  // apply immediate effects
+  if(sk.id==='hpBoost'){G.maxHp+=20;G.hp+=20;}
+  if(sk.id==='shield'){G.shieldHp+=30;}
+  refreshSkillTree();
+}
+
+// ==================== INPUT HANDLING ====================
+CV.addEventListener('mousemove',function(e){
+  var r=CV.getBoundingClientRect();
+  G.mx=(e.clientX-r.left)*(W/r.width);
+  G.my=(e.clientY-r.top)*(H/r.height);
+});
+
+CV.addEventListener('mousedown',function(e){
+  if(e.button!==0) return;
+  if(G.state==='title'){
+    startGame();return;
+  }
+  if(G.state==='gameover'||G.state==='victory'){
+    resetGame();startGame();return;
+  }
+  tryShoot();
+  // auto-fire for auto weapons
+  if(shootInterval) clearInterval(shootInterval);
+  var ws=getWeaponStats(G.weapon);
+  if(ws.auto&&G.state==='playing'){
+    shootInterval=setInterval(function(){tryShoot();},50);
+  }
+});
+
+CV.addEventListener('mouseup',function(e){
+  if(e.button===0 && shootInterval){clearInterval(shootInterval);shootInterval=null;}
+});
+
+CV.addEventListener('mouseleave',function(e){
+  if(shootInterval){clearInterval(shootInterval);shootInterval=null;}
+});
+
+document.addEventListener('keydown',function(e){
+  var k=e.key.toLowerCase();
+  G.keys[k]=true;
+  if(k==='r') reloadWeapon();
+  if(k==='u'){if(G.showUpgrade) closeUpgrade(); else openUpgrade();}
+  if(k==='t'){if(document.getElementById('skillPanel').style.display!=='none') closeSkillTree(); else openSkillTree();}
+  if(k==='1') switchWeapon(0);
+  if(k==='2') switchWeapon(1);
+  if(k==='3') switchWeapon(2);
+  if(k==='4') switchWeapon(3);
+});
+
+document.addEventListener('keyup',function(e){
+  G.keys[e.key.toLowerCase()]=false;
+});
+
+// ==================== GAME LOOP ====================
+function startGame(){
+  G.state='titleToGame';
+  resetGame();
+  G.chapter=1;G.wave=0;G.score=0;G.gold=100;G.skillPoints=1; // starting resources
+  G.px=W/2;G.py=H*0.7;G.hp=100;G.maxHp=100;
+  G.weapon=0;G.ammo=getWeaponStats(0).ammo;
+  G.bloodPools=[];
+  setTimeout(function(){startChapter(1);},500);
+}
+
+function resetGame(){
+  G.hp=100;G.maxHp=100;G.ammo=12;G.reloading=false;G.weapon=0;
+  G.enemies=[];G.bullets=[];G.particles=[];G.floatTexts=[];G.bloodPools=[];
+  G.gold=0;G.skillPoints=0;G.score=0;G.combo=0;G.totalKills=0;G.killStreak=0;G.wavesCleared=0;
+  G.weaponUpgrades={0:{dmg:0,rate:0,reload:0,ammo:0,spread:0},1:{dmg:0,rate:0,reload:0,ammo:0,spread:0},2:{dmg:0,rate:0,reload:0,ammo:0,spread:0},3:{dmg:0,rate:0,reload:0,ammo:0,spread:0}};
+  G.skills={hpBoost:0,speedBoost:0,crit:0,xpBoost:0,secondWind:0,shield:0,healAura:0};
+  G.emma=null;G.emmaRescued=false;G.emmaEscorted=false;G.shieldHp=0;G.secondWindUsed=false;G.healTimer=0;
+  G.bossSpawned=false;G.damageFlash=0;G.waveBannerTimer=0;G.chapterTitleTimer=0;
+  G.showUpgrade=false;
+  document.getElementById('emmaHud').style.display='none';
+  document.getElementById('upgradePanel').style.display='none';
+  document.getElementById('skillPanel').style.display='none';
+  document.getElementById('storyBox').style.display='none';
+}
+
+var lastTime=0;
+function gameLoop(timestamp){
+  var dt=Math.min(32,timestamp-lastTime)||(1000/60);
+  lastTime=timestamp;
+  var t=timestamp*0.001;
+  // apply screen shake
+  CX.save();
+  if(G.shakeT>0){CX.translate(G.shakeX,G.shakeY);}
+  if(G.state==='title'){
+    drawTitleScreen(t);
+  } else if(G.state==='playing'||G.state==='paused'||G.state==='storyPause'){
+    drawBG(t);drawGraves(t);drawEmma(t);drawEnemies(t);drawBullets();drawParticles();drawFloatTexts();drawPlayer(t);drawUI(t);
+  } else if(G.state==='gameover'||G.state==='victory'){
+    drawGameOverScreen(t);
+  }
+  CX.restore();
+  // update (don't update when paused except for some visual things)
+  if(G.state==='playing') updateGame(dt);
+  requestAnimationFrame(gameLoop);
+}
+
+// ==================== START ====================
+var shootInterval=null;
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
